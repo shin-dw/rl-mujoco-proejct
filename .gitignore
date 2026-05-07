@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 가상환경
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 학습 결과 (용량이 크므로 Git에 올리지 않음)
+results/
+
+# OS
+.DS_Store
+Thumbs.db
+*.png
