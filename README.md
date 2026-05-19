@@ -3,14 +3,16 @@
 > **서강대학교 강화학습 프로젝트**
 > 마감: 2026년 6월 12일 (금)
 
+> 📌 **README** · [프로젝트 기획서](project_proposal.md) · [로드맵](roadmap.md)
+
 MuJoCo 물리 시뮬레이션 기반 연속 제어 환경에서 **PPO, SAC, TD3** 알고리즘을 직접 구현하고, Reward Shaping 및 Domain Randomization 실험을 통해 체계적으로 비교·분석합니다.
 
 ## 📚 문서 안내
 
 원하시는 목적에 따라 아래의 문서를 확인해 주세요.
-*   [**실행 방법 및 환경 설정**](./README.md) (현재 문서): 코드 실행 및 결과 확인 방법
-*   [**프로젝트 기획서**](./project_proposal.md): 연구 목표, 실험 설계 및 세부 기획 내용
-*   [**실행 로드맵 (내부용)**](./roadmap.md): 팀원 주차별 액션 플랜 및 실험 팁
+*   [**실행 방법 및 환경 설정 (`README.md`)**](./README.md) (현재 문서): 코드 실행 및 결과 확인 방법
+*   [**프로젝트 기획서 (`project_proposal.md`)**](./project_proposal.md): 연구 목표, 실험 설계 및 세부 기획 내용
+*   [**실행 로드맵 (`roadmap.md`)**](./roadmap.md) (내부용): 팀원 주차별 액션 플랜 및 실험 팁
 
 ## 📁 프로젝트 구조
 
@@ -142,9 +144,9 @@ tensorboard --logdir results/
 
 | 이름 | 학번 | 담당 |
 |---|---|---|
-| - | - | PPO 구현 + 인프라 |
-| - | - | SAC 구현 + Reward Shaping |
-| - | - | TD3 구현 + Domain Rand. |
+| 동우 | - | 환경/실험 인프라 + Domain Randomization + 시각화 자동화 |
+| 희승 | - | PPO + TD3 구현 + Hyperparameter 실험 + Reward Shaping |
+| 민설 | - | SAC 구현 + 분석/보고서 |
 
 ## 📝 라이선스
 

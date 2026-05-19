@@ -3,8 +3,7 @@
 > **서강대학교 강화학습 프로젝트 기획서**
 > 마감: 2026년 6월 12일 (금) 오후 11시 59분
 
-> [!NOTE]
-> 🏠 **메인 페이지로 돌아가기**: 코드 실행 방법 및 전체 문서 안내는 [**README.md**](./README.md)를 참고하세요.
+> 📌 [README](README.md) · **프로젝트 기획서** · [로드맵](roadmap.md)
 
 ---
 
@@ -60,21 +59,21 @@ Weights & Biases     # 실험 로깅 및 추적 (선택)
 - **유형**: On-policy, Actor-Critic
 - **핵심 아이디어**: Clipped surrogate objective로 정책 업데이트 폭 제한
 - **장점**: 구현 단순, 안정적 학습
-- **담당**: 팀원 A
+- **담당**: 희승(B)
 
 ### 3.2 SAC (Soft Actor-Critic)
 
 - **유형**: Off-policy, Maximum Entropy RL
 - **핵심 아이디어**: 보상 최대화 + 엔트로피 최대화 (탐색-활용 균형)
 - **장점**: 샘플 효율성 우수, 연속 제어에 강함
-- **담당**: 팀원 B
+- **담당**: 민설(C)
 
 ### 3.3 TD3 (Twin Delayed DDPG)
 
 - **유형**: Off-policy, Deterministic Policy Gradient
 - **핵심 아이디어**: Twin Q-network + Delayed policy update + Target policy smoothing
 - **장점**: Q-value 과대추정 문제 해결
-- **담당**: 팀원 C
+- **담당**: 희승(B)
 
 ---
 
@@ -130,17 +129,17 @@ MuJoCo XML을 수정하여 물리 파라미터를 무작위화:
 
 ```mermaid
 graph LR
-    A["👤 팀원 A<br/>PPO 구현 + 인프라"] --> D["🎯 통합 실험<br/>& 분석"]
-    B["👤 팀원 B<br/>SAC 구현 + Reward"] --> D
-    C["👤 팀원 C<br/>TD3 구현 + Domain Rand."] --> D
+    A["👤 동우(A)<br/>환경/실험 인프라"] --> D["🎯 통합 실험<br/>& 분석"]
+    B["👤 희승(B)<br/>PPO + TD3 구현"] --> D
+    C["👤 민설(C)<br/>SAC + 분석/보고서"] --> D
 ```
 
-| 역할 | 팀원 A | 팀원 B | 팀원 C |
+| 역할 | 동우(A) | 희승(B) | 민설(C) |
 |---|---|---|---|
-| **알고리즘** | PPO 구현 | SAC 구현 | TD3 구현 |
-| **공통 인프라** | 학습 루프, 로깅, 평가 코드 | Replay Buffer, 네트워크 모듈 | 환경 래퍼, 시각화 유틸 |
-| **실험 담당** | 기본 성능 비교 + Ablation | Reward Shaping 실험 | Domain Randomization 실험 |
-| **보고서** | 서론 + 실험 셋업 | 결과 분석 + 시각화 | 토의 + 결론 + README |
+| **알고리즘** | — (인프라 전담) | PPO + TD3 구현 | SAC 구현 |
+| **공통 인프라** | MuJoCo 환경 세팅, 공통 학습 프레임워크, Eval Pipeline, 시각화 자동화 | Hyperparameter 실험 | 결과 분석 |
+| **실험 담당** | Domain Randomization 환경 구현 + 기본 성능 비교 | HP 튜닝 (clip ratio, policy delay, lr 등) + Reward Shaping 일부 | SAC ablation (α 자동조절 등) |
+| **보고서** | 서론 + 실험 셋업 | 결과 분석 + 시각화 | 토의 + 결론 + 최종 보고서 |
 
 > [!IMPORTANT]
 > 공통 모듈(네트워크, 버퍼, 환경 래퍼 등)을 먼저 만들고 알고리즘 구현에 들어가야 효율적입니다.
