@@ -171,8 +171,9 @@ def main():
     save_dir = os.path.join(args.save_dir, exp_name)
     os.makedirs(save_dir, exist_ok=True)
 
+    device_info = f"CUDA ({torch.cuda.get_device_name(0)})" if torch.cuda.is_available() else "CPU"
     print(f"{'='*60}\n  알고리즘: {args.algo.upper()} | 환경: {args.env} | 시드: {args.seed}")
-    print(f"  총 스텝: {total_steps:,} | 저장: {save_dir}\n{'='*60}")
+    print(f"  총 스텝: {total_steps:,} | 저장: {save_dir} | 디바이스: {device_info}\n{'='*60}")
 
     reward_fn = get_reward_fn(args.env, args.reward_type) if args.reward_type else None
     dr_cfg = config.get("domain_randomization", {}) if args.domain_rand else None
