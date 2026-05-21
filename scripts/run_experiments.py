@@ -240,6 +240,16 @@ def run_eval_all(dry_run: bool):
     run_cmd(cmd, dry_run)
 
 
+def run_report(dry_run: bool):
+    print("\n" + "★" * 30)
+    print("  보고서 생성: generate_report.py")
+    print("★" * 30)
+    # 그래프 먼저 생성
+    run_cmd([sys.executable, "scripts/plot_results.py", "--env", "Humanoid-v5"], dry_run)
+    # 보고서 생성
+    run_cmd([sys.executable, "scripts/generate_report.py"], dry_run)
+
+
 # =============================================================================
 # 실험 4: 최적 조합
 # =============================================================================
@@ -422,6 +432,8 @@ def main():
     if args.phase == "all":
         run_eval_all(args.dry_run)
         run_best_combination(args.dry_run)
+        run_eval_all(args.dry_run)   # 최적 조합 포함 재평가
+        run_report(args.dry_run)
 
     if args.phase == "best":
         run_best_combination(args.dry_run)
