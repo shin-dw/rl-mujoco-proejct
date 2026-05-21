@@ -5,17 +5,20 @@
   1. 베이스라인  : PPO / SAC / TD3  x  시드 42, 77, 123
   2. Reward Shaping : PPO / SAC / TD3  x  balanced_walk / stable_gait  (시드 42)
   3. HP 튜닝     : 알고리즘별 주요 HP 변경  (시드 42, 베이스라인과 비교)
+  4. 최적 조합   : 1~3 결과에서 최고 설정을 자동 탐색해 최종 학습
 
 사용법:
-  python scripts/run_experiments.py                  # 전체 실행
+  python scripts/run_experiments.py                  # 전체 실행 (1~3)
   python scripts/run_experiments.py --phase baseline
   python scripts/run_experiments.py --phase reward
   python scripts/run_experiments.py --phase hp
+  python scripts/run_experiments.py --phase best     # 최적 조합 (eval_all.py 먼저 실행)
   python scripts/run_experiments.py --dry-run        # 명령어만 출력 (실행 안 함)
 """
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import yaml
@@ -227,6 +230,158 @@ def run_hp_tuning(dry_run: bool):
         print("\n  [정리] 임시 HP config 파일 삭제 완료")
 
 # =============================================================================
+# 중간 평가: eval_all.py 실행
+# =============================================================================
+
+def run_eval_all(dry_run: bool):
+    print("\n" + "★" * 30)
+    print("  중간 평가: eval_all.py")
+    print("★" * 30)
+    cmd = [sys.executable, "scripts/eval_all.py", "--episodes", "20"]
+    run_cmd(cmd, dry_run)
+
+
+# =============================================================================
+# 실험 4: 최적 조합
+# =============================================================================
+
+def find_best_settings(results_dir: str = "results") -> dict:
+    """
+    summary.csv에서 최고 성능 설정을 자동으로 탐색합니다.
+    반환: {algo, reward, hp_tag, hp_variant}
+    """
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("pandas가 필요합니다: pip install pandas")
+
+    summary_path = Path(results_dir) / "eval" / "summary.csv"
+    if not summary_path.exists():
+        raise FileNotFoundError(
+            "summary.csv가 없습니다.\n"
+            "  먼저 다음 명령어를 실행하세요:\n"
+            "  python scripts/eval_all.py"
+        )
+
+    df = pd.read_csv(summary_path)
+    df["mean_return"] = pd.to_numeric(df["mean_return"], errors="coerce")
+
+    # 1. 최고 알고리즘: 베이스라인 시드 평균 기준
+    baseline_mask = df["experiment"].str.match(
+        rf"^(ppo|sac|td3)_{re.escape(ENV)}_seed\d+$"
+    )
+    baseline = df[baseline_mask]
+    if baseline.empty:
+        raise ValueError("베이스라인 평가 결과가 없습니다. 베이스라인을 먼저 실행하세요.")
+    best_algo = baseline.groupby("algorithm")["mean_return"].mean().idxmax().lower()
+
+    # 2. 최고 Reward Shaping: 해당 알고리즘의 reward 실험 중 최고
+    reward_mask = df["experiment"].str.match(
+        rf"^{best_algo}_{re.escape(ENV)}_({'|'.join(REWARD_TYPES)})_seed42$"
+    )
+    reward_df = df[reward_mask]
+    best_reward = None
+    if not reward_df.empty:
+        best_reward_exp = reward_df.loc[reward_df["mean_return"].idxmax(), "experiment"]
+        m = re.search(r"(" + "|".join(REWARD_TYPES) + r")", best_reward_exp)
+        if m:
+            # 베이스라인보다 높을 때만 채택
+            baseline_mean = baseline[baseline["algorithm"] == best_algo.upper()]["mean_return"].mean()
+            if reward_df["mean_return"].max() > baseline_mean:
+                best_reward = m.group(1)
+
+    # 3. 최고 HP: 해당 알고리즘의 HP 실험 중 최고
+    hp_mask = df["experiment"].str.match(
+        rf"^{best_algo}_{re.escape(ENV)}_hp_[a-z0-9e.\-]+_seed42$"
+    )
+    hp_df = df[hp_mask]
+    best_hp_tag = None
+    best_hp_variant = None
+    if not hp_df.empty:
+        best_hp_exp = hp_df.loc[hp_df["mean_return"].idxmax(), "experiment"]
+        m = re.search(r"_hp_([a-z0-9e.\-]+)_seed", best_hp_exp)
+        if m:
+            tag = m.group(1)
+            baseline_mean = baseline[baseline["algorithm"] == best_algo.upper()]["mean_return"].mean()
+            if hp_df["mean_return"].max() > baseline_mean:
+                best_hp_tag = tag
+                for v in HP_VARIANTS.get(best_algo, []):
+                    if v["tag"] == tag:
+                        best_hp_variant = v
+                        break
+
+    return {
+        "algo": best_algo,
+        "reward": best_reward,
+        "hp_tag": best_hp_tag,
+        "hp_variant": best_hp_variant,
+    }
+
+
+def run_best_combination(dry_run: bool):
+    print("\n" + "★" * 30)
+    print("  Phase 4: 최적 조합")
+    print("★" * 30)
+
+    try:
+        best = find_best_settings()
+    except (FileNotFoundError, ValueError, ImportError) as e:
+        print(f"\n  [오류] {e}")
+        return
+
+    algo      = best["algo"]
+    reward    = best["reward"]
+    hp_tag    = best["hp_tag"]
+    hp_variant = best["hp_variant"]
+
+    print(f"\n  ┌─────────────────────────────────┐")
+    print(f"  │  최고 알고리즘 : {algo.upper():<17}│")
+    print(f"  │  최고 Reward   : {(reward or '기본 (개선 없음)'):<17}│")
+    print(f"  │  최고 HP       : {(hp_tag or '기본 (개선 없음)'):<17}│")
+    print(f"  └─────────────────────────────────┘")
+
+    # HP config 생성
+    config_path = BASE_CONFIG
+    if hp_variant:
+        HP_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        config_path = make_hp_config(
+            algo=algo,
+            section=hp_variant["section"],
+            key=hp_variant["key"],
+            value=hp_variant["value"],
+            tag=f"best_{hp_tag}",
+        )
+
+    reward_suffix = f"_{reward}" if reward else ""
+    hp_suffix     = f"_hp_{hp_tag}" if hp_tag else ""
+    exp_name = f"{algo}_{ENV}{reward_suffix}{hp_suffix}_best_seed42"
+
+    cmd = [
+        sys.executable, "-m", "src.train",
+        "--algo", algo,
+        "--env", ENV,
+        "--seed", "42",
+        "--total-steps", str(TOTAL_STEPS),
+        "--config", str(config_path),
+        "--tensorboard",
+    ]
+    if reward:
+        cmd += ["--reward-type", reward]
+
+    print(f"\n  실험명: {exp_name}\n")
+
+    if result_exists(exp_name):
+        print(f"  [SKIP] {exp_name} (이미 완료됨)")
+        return
+
+    run_cmd(cmd, dry_run)
+
+    if not dry_run and hp_variant and HP_CONFIG_DIR.exists():
+        import shutil
+        shutil.rmtree(HP_CONFIG_DIR)
+
+
+# =============================================================================
 # 메인
 # =============================================================================
 
@@ -234,9 +389,9 @@ def main():
     parser = argparse.ArgumentParser(description="희승 실험 자동화 스크립트")
     parser.add_argument(
         "--phase",
-        choices=["all", "baseline", "reward", "hp"],
+        choices=["all", "baseline", "reward", "hp", "best"],
         default="all",
-        help="실행할 실험 단계 (기본: all)",
+        help="실행할 실험 단계 (기본: all = 1~3단계, best는 별도 실행)",
     )
     parser.add_argument(
         "--dry-run",
@@ -264,6 +419,13 @@ def main():
 
     if args.phase in ("all", "hp"):
         run_hp_tuning(args.dry_run)
+
+    if args.phase == "all":
+        run_eval_all(args.dry_run)
+        run_best_combination(args.dry_run)
+
+    if args.phase == "best":
+        run_best_combination(args.dry_run)
 
     print("\n\n  모든 실험 완료!")
 
