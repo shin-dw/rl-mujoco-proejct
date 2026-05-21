@@ -36,7 +36,7 @@ ENVS = ["HalfCheetah-v5", "Ant-v5", "Humanoid-v5"]
 
 EXP_PATTERN = re.compile(
     r"^(?P<algo>ppo|sac|td3)_(?P<env>[A-Za-z]+-v\d+)"
-    r"(?:_(?P<reward>[a-z_]+?))?(?P<dr>_dr)?_seed(?P<seed>\d+)$"
+    r"(?:_hp_(?P<hp>[a-z0-9e.\-]+))?(?:_(?P<reward>[a-z_]+?))?(?P<dr>_dr)?_seed(?P<seed>\d+)$"
 )
 
 
@@ -220,7 +220,71 @@ def plot_reward_comparison(results_dir, output_dir, env_filter=None):
         print(f"  ✅ Reward Shaping: {path}")
 
 
-# ─── 4. Domain Randomization 비교 ───
+# ─── 4. HP 튜닝 비교 ───
+
+def plot_hp_comparison(results_dir, output_dir, env_filter=None):
+    """알고리즘별 HP 튜닝 변형을 베이스라인과 비교합니다."""
+    logs = discover_logs(results_dir, env_filter)
+    if not logs:
+        print("  [HP 튜닝] 로그 데이터가 없습니다.")
+        return
+
+    # 알고리즘별로 베이스라인 + HP 변형 그룹핑
+    groups = defaultdict(dict)  # {(env, algo): {label: log}}
+    for log in logs:
+        if log["dr"] or log["reward"]:
+            continue
+        key = (log["env"], log["algo"].upper())
+        label = f"hp_{log['hp']}" if log.get("hp") else "baseline"
+        groups[key][label] = log
+
+    has_hp = any(
+        any(k != "baseline" for k in v) for v in groups.values()
+    )
+    if not has_hp:
+        print("  [HP 튜닝] HP 튜닝 실험 데이터가 없습니다.")
+        return
+
+    for (env, algo), entries in groups.items():
+        if len(entries) < 2 or "baseline" not in entries:
+            continue
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        # 베이스라인 먼저 굵게
+        base_log = entries["baseline"]
+        df = pd.read_csv(base_log["csv_path"])
+        if "episode/return" in df.columns:
+            returns = smooth(df["episode/return"].dropna().values, window=20)
+            ax.plot(returns, label="baseline", linewidth=2.5,
+                    color="black", linestyle="-")
+
+        # HP 변형들
+        colors = plt.cm.tab10.colors
+        for i, (label, log) in enumerate(sorted(entries.items())):
+            if label == "baseline":
+                continue
+            df = pd.read_csv(log["csv_path"])
+            if "episode/return" not in df.columns:
+                continue
+            returns = smooth(df["episode/return"].dropna().values, window=20)
+            ax.plot(returns, label=label, linewidth=1.8,
+                    color=colors[i % len(colors)], linestyle="--")
+
+        ax.set_xlabel("Log Step")
+        ax.set_ylabel("Episode Return")
+        ax.set_title(f"{env} / {algo} — HP Tuning Comparison")
+        ax.legend(bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=9)
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        path = os.path.join(output_dir, f"hp_{env}_{algo}.png")
+        plt.savefig(path, bbox_inches="tight")
+        plt.close()
+        print(f"  ✅ HP 튜닝: {path}")
+
+
+# ─── 5. Domain Randomization 비교 ───
 
 def plot_dr_comparison(results_dir, output_dir, env_filter=None):
     """기본 학습 vs DR 학습 비교."""
@@ -272,7 +336,7 @@ def main():
     parser.add_argument("--results-dir", default="results")
     parser.add_argument("--output-dir", default="results/plots")
     parser.add_argument("--type", default="all",
-                        choices=["all", "curves", "bar", "reward", "dr"])
+                        choices=["all", "curves", "bar", "reward", "hp", "dr"])
     parser.add_argument("--env", default=None, help="특정 환경만 (예: HalfCheetah-v5)")
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
@@ -287,6 +351,8 @@ def main():
         plot_performance_bar(args.results_dir, args.output_dir)
     if args.type in ("all", "reward"):
         plot_reward_comparison(args.results_dir, args.output_dir, args.env)
+    if args.type in ("all", "hp"):
+        plot_hp_comparison(args.results_dir, args.output_dir, args.env)
     if args.type in ("all", "dr"):
         plot_dr_comparison(args.results_dir, args.output_dir, args.env)
 
