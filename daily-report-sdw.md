@@ -56,6 +56,6 @@
 ---
 
 ### 🔜 다음 할 일
-- [ ] 희승(B), 민설(C)에게 환경 세팅 가이드 공유
-- [ ] 희승/민설용 Hyperparameter 실험 YAML 프로필 준비 (선택)
+- [x] 희승(B), 민설(C)에게 환경 세팅 가이드 공유
+- [x] 희승/민설용 Hyperparameter 실험 YAML 프로필 준비 (선택)
 - [ ] 팀원들 학습 완료 후 `eval_all.py` → `plot_results.py` 실행하여 최종 결과 수집

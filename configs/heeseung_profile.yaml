@@ -1,0 +1,32 @@
+# =============================================================================
+# 희승(B) 실험용 프로필: PPO & TD3 중심
+# 
+# 이 파일을 `--config` 옵션 등으로 넘겨서 실험을 진행하세요.
+# 예: python src/train.py --algo ppo --env HalfCheetah-v5 --config configs/heeseung_profile.yaml
+# =============================================================================
+
+common:
+  # 기본 설정은 default.yaml을 상속하되, 실험용으로 덮어쓸 값들
+  seed: 100               # 실험 시드 번호 (여러 시드로 실험할 때 변경)
+  total_timesteps: 1_000_000
+
+network:
+  hidden_dims: [256, 256] # PPO/TD3의 경우 네트워크 크기를 키워보는 실험 가능 [400, 300] 등
+
+ppo:
+  # PPO 주요 튜닝 포인트
+  lr_actor: 3.0e-4
+  lr_critic: 3.0e-4
+  batch_size: 64
+  clip_ratio: 0.2
+  entropy_coef: 0.01      # 탐색(Exploration)을 늘리기 위해 약간의 엔트로피 보너스 추가
+
+td3:
+  # TD3 주요 튜닝 포인트
+  exploration_noise: 0.1  # 초기 탐색 노이즈
+  batch_size: 256
+
+# Domain Randomization 등 특수 환경 실험 (필요 시 true로 변경)
+domain_randomization:
+  enabled: false
+  friction_range: [0.8, 1.2]

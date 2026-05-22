@@ -1,0 +1,28 @@
+# =============================================================================
+# 민설(C) 실험용 프로필: SAC 중심
+#
+# 이 파일을 `--config` 옵션 등으로 넘겨서 실험을 진행하세요.
+# 예: python src/train.py --algo sac --env HalfCheetah-v5 --config configs/minseol_profile.yaml
+# =============================================================================
+
+common:
+  # 기본 설정
+  seed: 200               # 실험 시드 번호
+  total_timesteps: 1_000_000
+
+network:
+  hidden_dims: [256, 256]
+
+sac:
+  # SAC 주요 튜닝 포인트
+  lr_actor: 3.0e-4
+  lr_critic: 3.0e-4
+  lr_alpha: 3.0e-4
+  batch_size: 256
+  auto_entropy: true      # 기본적으로 자동 온도 조절 사용
+  init_alpha: 0.2         # 만약 auto_entropy: false 라면 고정값으로 테스트 가능
+
+# Reward Shaping 실험 (보고서 작성 시 성능 비교를 위해 테스트 가능)
+reward_shaping:
+  enabled: false
+  type: "energy_efficient" # "default", "energy_efficient", "stability" 등
