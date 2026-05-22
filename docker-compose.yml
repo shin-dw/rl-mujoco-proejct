@@ -1,0 +1,48 @@
+services:
+
+  # 전체 실험 자동 실행 (베이스라인 → Reward Shaping → HP튜닝 → 최적조합 → 보고서)
+  train:
+    build: .
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MUJOCO_GL=egl
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./results:/workspace/results
+      - ./report:/workspace/report
+      - ./configs:/workspace/configs
+    command: python scripts/run_experiments.py
+
+  # 단일 학습 실행 (command를 오버라이드해서 사용)
+  # docker compose run train-single --algo ppo --env Humanoid-v5 --seed 42
+  train-single:
+    build: .
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MUJOCO_GL=egl
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./results:/workspace/results
+      - ./configs:/workspace/configs
+    entrypoint: python -m src.train
+
+  # TensorBoard 모니터링
+  tensorboard:
+    build: .
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./results:/workspace/results
+    command: tensorboard --logdir results/ --host 0.0.0.0
