@@ -31,6 +31,9 @@ def humanoid_balanced_walk(
     """
     forward_reward = reward
 
+    # PPO unbounded action → ctrlrange(±0.4)로 clip 후 사용
+    clipped = np.clip(action, -0.4, 0.4)
+
     # z축 높이 유지 보상
     uprightness_bonus = 0.0
     if len(next_obs) > 2:
@@ -38,14 +41,14 @@ def humanoid_balanced_walk(
         target_height = 1.2
         uprightness_bonus = -0.5 * (height - target_height) ** 2
 
-    # 에너지 절약 페널티
-    action_penalty = -0.02 * np.sum(action ** 2)
+    # 에너지 절약 페널티 (clipped action 사용 — base의 control_cost와 일관성 유지)
+    action_penalty = -0.02 * np.sum(clipped ** 2)
 
     # y축 이탈 페널티 (x방향 직진 유도)
     y_velocity_penalty = -0.3 * abs(info.get("y_velocity", 0.0))
 
-    # 좌우 고관절 대칭성 페널티 (right_hip_x vs left_hip_x)
-    symmetry_penalty = -0.1 * abs(action[3] - action[7])
+    # 좌우 고관절 대칭성 페널티 (clipped action 사용)
+    symmetry_penalty = -0.1 * abs(clipped[3] - clipped[7])
 
     return forward_reward + uprightness_bonus + action_penalty + y_velocity_penalty + symmetry_penalty
 
@@ -71,16 +74,19 @@ class HumanoidStableGait:
     ) -> float:
         forward_reward = reward
 
-        # action 크기 페널티
-        smoothness_penalty = -0.01 * np.sum(action ** 2)
+        # PPO unbounded action → ctrlrange(±0.4)로 clip 후 사용
+        clipped = np.clip(action, -0.4, 0.4)
 
-        # 이전 action 대비 변화량 페널티
+        # action 크기 페널티 (clipped 사용)
+        smoothness_penalty = -0.01 * np.sum(clipped ** 2)
+
+        # 이전 action 대비 변화량 페널티 (clipped 사용)
         if self.prev_action is not None:
-            action_diff_penalty = -0.1 * np.sum((action - self.prev_action) ** 2)
+            action_diff_penalty = -0.1 * np.sum((clipped - self.prev_action) ** 2)
         else:
             action_diff_penalty = 0.0
 
-        self.prev_action = action.copy()
+        self.prev_action = clipped.copy()
 
         return forward_reward + smoothness_penalty + action_diff_penalty
 
@@ -129,11 +135,18 @@ def humanoid_run_forward(
     # 전진 속도 보너스 (주 신호)
     velocity_bonus = 2.0 * max(x_vel, 0.0)
 
-    # 좌우 고관절 교차 보상 (작은 넛지 — velocity의 8% 수준)
+    # ★ PPO 전용 주의사항:
+    #   PPO actor는 unbounded Gaussian → action이 ±수십까지 가능
+    #   MuJoCo는 ctrlrange(±0.4)로 clip하지만 reward_fn은 clip 전 raw action을 받음
+    #   → action 값을 그대로 곱하면 reward가 수만으로 폭발 (reward hacking)
+    #   → 반드시 MuJoCo ctrlrange로 clip 후 사용해야 함
+    clipped = np.clip(action, -0.4, 0.4)
+
+    # 좌우 고관절 교차 보상 (작은 넛지 — velocity의 ~8% 수준)
     # 반대 방향 → 곱 음수 → 보너스 양수 (교차 O)
     # 같은 방향 → 곱 양수 → 페널티 (호핑 억제)
-    # max = 1.0 × 0.4² = ±0.16/step
-    hip_alternation_bonus = -1.0 * (action[3] * action[7])
+    # max = 1.0 × 0.4² = ±0.16/step (bounded, hacking 불가)
+    hip_alternation_bonus = -1.0 * (clipped[3] * clipped[7])
 
     return base + velocity_bonus + hip_alternation_bonus
 
