@@ -1,44 +1,244 @@
+# ============================================================
+# GPU/CPU 겸용 구성
+#
+# PPO  → CPU (on-policy, 소규모 배치)
+# SAC  → GPU0
+# TD3  → GPU1
+#
+# ★ 3개 동시 학습 (터미널 3개):
+#   Terminal 1: docker compose run --rm train-ppo
+#   Terminal 2: docker compose run --rm train-sac
+#   Terminal 3: docker compose run --rm train-td3
+#
+# 단일 실험 (CPU):
+#   docker compose run --rm train-single --algo ppo --env Humanoid-v5 --seed 42 --device cpu
+#
+# 단일 실험 (GPU):
+#   docker compose run --rm train-single-gpu --algo sac --env Humanoid-v5 --seed 42 --device cuda
+#
+# TensorBoard:
+#   docker compose up tensorboard
+# ============================================================
+
+# 공통 볼륨
+x-volumes: &default-volumes
+  - ./results:/workspace/results
+  - ./configs:/workspace/configs
+  - ./src:/workspace/src
+  - ./scripts:/workspace/scripts
+
+# GPU0 리소스 (SAC용)
+x-gpu0: &gpu0-resources
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['0']
+            capabilities: [gpu]
+
+# GPU1 리소스 (TD3용)
+x-gpu1: &gpu1-resources
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['1']
+            capabilities: [gpu]
+
+# GPU 리소스 설정 (레거시 phase 서비스용)
+x-gpu: &gpu-resources
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
 services:
 
-  # 전체 실험 자동 실행 (베이스라인 → Reward Shaping → HP튜닝 → 최적조합 → 보고서)
-  train:
-    build: .
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - MUJOCO_GL=egl
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    volumes:
-      - ./results:/workspace/results
-      - ./report:/workspace/report
-      - ./configs:/workspace/configs
-    command: python scripts/run_experiments.py
+  # ================================================================
+  # [단일 베이스라인] PPO — CPU / SAC — GPU0 / TD3 — GPU1   (seed 42, 1회)
+  #
+  # 터미널 3개를 열고 각각 실행:
+  #   docker compose run --rm train-ppo
+  #   docker compose run --rm train-sac
+  #   docker compose run --rm train-td3
+  # ================================================================
 
-  # 단일 학습 실행 (command를 오버라이드해서 사용)
-  # docker compose run train-single --algo ppo --env Humanoid-v5 --seed 42
+  train-ppo:
+    build: .
+    volumes: *default-volumes
+    command: >
+      python -m src.train
+        --algo ppo
+        --env Humanoid-v5
+        --seed 42
+        --device cpu
+        --tensorboard
+
+  train-sac:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu0-resources
+    command: >
+      python -m src.train
+        --algo sac
+        --env Humanoid-v5
+        --seed 42
+        --device cuda
+        --tensorboard
+
+  train-td3:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu1-resources
+    command: >
+      python -m src.train
+        --algo td3
+        --env Humanoid-v5
+        --seed 42
+        --device cuda
+        --tensorboard
+
+  # ================================================================
+  # [올인원] 알고리즘별 전체 실험: 베이스라인(3시드) + Reward + HP튜닝
+  #
+  # 실행 순서:
+  #   실험 수: PPO 9개 / SAC 9개 / TD3 9개 (각 3M 스텝)
+  #   소요 예상: 알고리즘당 40~60시간 (CPU/GPU 병렬 실행 권장)
+  #
+  # 터미널 3개를 열고 동시 실행:
+  #   docker compose run --rm train-ppo-all
+  #   docker compose run --rm train-sac-all
+  #   docker compose run --rm train-td3-all
+  # ================================================================
+
+  train-ppo-all:
+    build: .
+    volumes: *default-volumes
+    command: >
+      sh -c "
+        python -m src.train --algo ppo --env Humanoid-v5 --seed 42 --total-steps 3000000 --device cpu --tensorboard &&
+        python scripts/run_experiments.py --phase reward --algo ppo --device cpu &&
+        python scripts/run_experiments.py --phase hp     --algo ppo --device cpu
+      "
+
+  train-sac-all:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu0-resources
+    command: >
+      sh -c "
+        python -m src.train --algo sac --env Humanoid-v5 --seed 42 --total-steps 3000000 --device cuda --tensorboard &&
+        python scripts/run_experiments.py --phase reward --algo sac --device cuda &&
+        python scripts/run_experiments.py --phase hp     --algo sac --device cuda
+      "
+
+  train-td3-all:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu1-resources
+    command: >
+      sh -c "
+        python -m src.train --algo td3 --env Humanoid-v5 --seed 42 --total-steps 3000000 --device cuda --tensorboard &&
+        python scripts/run_experiments.py --phase reward --algo td3 --device cuda &&
+        python scripts/run_experiments.py --phase hp     --algo td3 --device cuda
+      "
+
+  # ================================================================
+  # [Phase 1] 베이스라인 — PPO(CPU) / SAC(GPU) / TD3(GPU)
+  # ================================================================
+  train-baseline:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    command: >
+      python scripts/run_experiments.py
+        --phase baseline
+        --device auto
+
+  # ================================================================
+  # [Phase 2] Reward Shaping
+  # ================================================================
+  train-reward:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    command: >
+      python scripts/run_experiments.py
+        --phase reward
+        --device auto
+
+  # ================================================================
+  # [Phase 3] HP 튜닝
+  # ================================================================
+  train-hp:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    command: >
+      python scripts/run_experiments.py
+        --phase hp
+        --device auto
+
+  # ================================================================
+  # [Phase 4] 최적 조합 + 보고서
+  # ================================================================
+  train-best:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    command: >
+      sh -c "
+        python scripts/eval_all.py --episodes 20 &&
+        python scripts/run_experiments.py --phase best --device auto &&
+        python scripts/eval_all.py --episodes 20 &&
+        python scripts/plot_results.py --env Humanoid-v5 &&
+        python scripts/generate_report.py
+      "
+
+  # ================================================================
+  # [전체 자동 실행]
+  # ================================================================
+  train-all:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    command: >
+      sh -c "
+        python scripts/run_experiments.py --phase baseline --device auto &&
+        python scripts/run_experiments.py --phase reward   --device auto &&
+        python scripts/run_experiments.py --phase hp       --device auto &&
+        python scripts/eval_all.py --episodes 20 &&
+        python scripts/run_experiments.py --phase best     --device auto &&
+        python scripts/eval_all.py --episodes 20 &&
+        python scripts/plot_results.py --env Humanoid-v5 &&
+        python scripts/generate_report.py
+      "
+
+  # ================================================================
+  # [단일 실험] CPU
+  # ================================================================
   train-single:
     build: .
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - MUJOCO_GL=egl
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    volumes:
-      - ./results:/workspace/results
-      - ./configs:/workspace/configs
+    volumes: *default-volumes
     entrypoint: python -m src.train
 
-  # TensorBoard 모니터링
+  # ================================================================
+  # [단일 실험] GPU
+  # ================================================================
+  train-single-gpu:
+    build: .
+    volumes: *default-volumes
+    <<: *gpu-resources
+    entrypoint: python -m src.train
+
+  # ================================================================
+  # TensorBoard — http://localhost:6006
+  # ================================================================
   tensorboard:
     build: .
     ports:

@@ -9,13 +9,14 @@
 - VNetwork: Value 네트워크 (PPO)
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 from typing import List, Tuple
 
-LOG_STD_MIN = -20
+LOG_STD_MIN = -4   # σ_min ≈ 0.018 (was -20 → σ=2e-9: log_prob→+326 → alpha 폭발 원인)
 LOG_STD_MAX = 2
 
 
@@ -50,6 +51,7 @@ class MLP(nn.Module):
         hidden_dims: List[int] = [256, 256],
         activation: str = "relu",
         output_activation: nn.Module = None,
+        apply_ortho_init: bool = False,
     ):
         super().__init__()
         activation_fn = get_activation(activation)
@@ -67,6 +69,16 @@ class MLP(nn.Module):
 
         self.net = nn.Sequential(*layers)
 
+        if apply_ortho_init:
+            self._apply_ortho_init()
+
+    def _apply_ortho_init(self):
+        """히든 레이어에 Orthogonal 초기화, 출력 레이어에 gain=0.01 적용."""
+        linear_layers = [m for m in self.net if isinstance(m, nn.Linear)]
+        for layer in linear_layers[:-1]:
+            init_weights(layer, gain=np.sqrt(2))
+        init_weights(linear_layers[-1], gain=0.01)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
@@ -77,6 +89,8 @@ class GaussianActor(nn.Module):
 
     PPO: log_std를 독립 파라미터로 관리 (state-independent)
     SAC: log_std를 네트워크 출력으로 생성 (state-dependent) + reparameterization trick
+         max_action으로 tanh 출력을 환경 action space에 맞게 스케일링.
+         (예: Humanoid-v5 = 0.4 → 출력 범위 [-0.4, 0.4])
     """
 
     def __init__(
@@ -86,9 +100,12 @@ class GaussianActor(nn.Module):
         hidden_dims: List[int] = [256, 256],
         activation: str = "relu",
         state_dependent_std: bool = False,
+        max_action: float = 1.0,
+        apply_ortho_init: bool = False,
     ):
         super().__init__()
         self.state_dependent_std = state_dependent_std
+        self.max_action = max_action
         activation_fn = get_activation(activation)
 
         # 공유 히든 레이어
@@ -108,7 +125,22 @@ class GaussianActor(nn.Module):
             self.log_std_head = nn.Linear(prev_dim, act_dim)
         else:
             # PPO 스타일: log_std는 학습 가능한 독립 파라미터
-            self.log_std = nn.Parameter(torch.zeros(act_dim))
+            # [FIX 3] Humanoid-v5 액션 스페이스(±0.4)에 맞게 초기 std를 줄임.
+            # zeros(→ std=1.0)이면 초기 샘플이 [-3,3] 범위로 액션 경계를 크게 벗어나
+            # MuJoCo ctrlrange 클리핑 후에도 최대 토크만 랜덤 방향으로 가해져 즉시 쓰러짐.
+            # -1.0 → std=e^-1≈0.37: 액션 경계(±0.4)와 비슷한 스케일로 초반 안정성 확보.
+            self.log_std = nn.Parameter(torch.full((act_dim,), -1.0))
+
+        # PPO log_std 상한 클램프 상수 (state_dependent_std=False 전용)
+        # std ≤ e^(-0.5) ≈ 0.61로 제한: MuJoCo 내부 클리핑과 조합 시 entropy 폭발 방지.
+        # 경계값 액션이 log_std 그래디언트를 양수로 편향시키는 효과를 상한으로 차단.
+        self._ppo_log_std_max = -0.5
+
+        if apply_ortho_init:
+            # PPO 권장: 히든 gain=sqrt(2), 출력 헤드 gain=0.01
+            for layer in [m for m in self.shared if isinstance(m, nn.Linear)]:
+                init_weights(layer, gain=np.sqrt(2))
+            init_weights(self.mean_head, gain=0.01)
 
     def forward(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """평균과 log 표준편차를 반환합니다."""
@@ -119,7 +151,9 @@ class GaussianActor(nn.Module):
             log_std = self.log_std_head(features)
             log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         else:
-            log_std = self.log_std.expand_as(mean)
+            # PPO: 상한을 _ppo_log_std_max(-0.5)로 고정해 entropy 폭발 방지.
+            # MuJoCo 내부 클리핑(±0.4)과 상호작용 시 log_std가 단조 증가하는 현상을 차단.
+            log_std = torch.clamp(self.log_std, LOG_STD_MIN, self._ppo_log_std_max).expand_as(mean)
 
         return mean, log_std
 
@@ -143,7 +177,7 @@ class GaussianActor(nn.Module):
     def rsample_with_log_prob(self, obs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         SAC용 reparameterization trick 샘플링.
-        tanh squashing 적용 후 보정된 log 확률 반환.
+        tanh squashing + max_action 스케일링 적용 후 보정된 log 확률 반환.
         """
         mean, log_std = self.forward(obs)
         std = log_std.exp()
@@ -151,11 +185,18 @@ class GaussianActor(nn.Module):
 
         # Reparameterization trick
         z = dist.rsample()
-        action = torch.tanh(z)
+        tanh_z = torch.tanh(z)
+        # max_action으로 스케일링 → 환경 action space와 일치
+        action = self.max_action * tanh_z
 
         # tanh squashing에 의한 log 확률 보정
-        log_prob = dist.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
-        log_prob = log_prob.sum(dim=-1)
+        # a = max_action * tanh(z) 변환의 야코비안: da/dz = max_action * (1 - tanh²(z))
+        # log|da/dz| = log(max_action) + log(1 - tanh²(z))
+        # [FIX 4] max_action ≠ 1.0일 때 log(max_action) 항을 반드시 포함해야 함.
+        # 누락 시 log_prob가 act_dim * |log(max_action)| 만큼 편향(Humanoid: +15.57)되어
+        # SAC alpha가 정책을 과도하게 결정론적(std≈0.003)으로 압축함 → 탐험 부족.
+        log_prob = dist.log_prob(z) - torch.log(1 - tanh_z.pow(2) + 1e-6)
+        log_prob = log_prob.sum(dim=-1) - z.shape[-1] * np.log(self.max_action)
 
         return action, log_prob
 
@@ -222,7 +263,7 @@ class TwinQNetwork(nn.Module):
         self,
         obs_dim: int,
         act_dim: int,
-        hidden_dims: List[int] = [256, 256],
+        hidden_dims: List[int] = [512, 512],
         activation: str = "relu",
     ):
         super().__init__()
@@ -245,9 +286,10 @@ class VNetwork(nn.Module):
         obs_dim: int,
         hidden_dims: List[int] = [256, 256],
         activation: str = "relu",
+        apply_ortho_init: bool = False,
     ):
         super().__init__()
-        self.net = MLP(obs_dim, 1, hidden_dims, activation)
+        self.net = MLP(obs_dim, 1, hidden_dims, activation, apply_ortho_init=apply_ortho_init)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         return self.net(obs).squeeze(-1)

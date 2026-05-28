@@ -105,30 +105,31 @@ def print_plan(experiments: list[dict]):
 # 실험 1: 베이스라인
 # =============================================================================
 
-def build_baseline() -> list[dict]:
+def build_baseline(device: str = None, algo_filter: str = None) -> list[dict]:
+    algos = [algo_filter] if algo_filter else ALGOS
     experiments = []
-    for algo in ALGOS:
+    for algo in algos:
         for seed in SEEDS:
             exp_name = f"{algo}_{ENV}_seed{seed}"
-            experiments.append({
-                "name": exp_name,
-                "cmd": [
-                    sys.executable, "-m", "src.train",
-                    "--algo", algo,
-                    "--env", ENV,
-                    "--seed", str(seed),
-                    "--total-steps", str(TOTAL_STEPS),
-                    "--tensorboard",
-                ],
-            })
+            cmd = [
+                sys.executable, "-m", "src.train",
+                "--algo", algo,
+                "--env", ENV,
+                "--seed", str(seed),
+                "--total-steps", str(TOTAL_STEPS),
+                "--tensorboard",
+            ]
+            if device:
+                cmd += ["--device", device]
+            experiments.append({"name": exp_name, "cmd": cmd})
     return experiments
 
 
-def run_baseline(dry_run: bool):
+def run_baseline(dry_run: bool, device: str = None, algo_filter: str = None):
     print("\n" + "★" * 30)
-    print("  Phase 1: 베이스라인")
+    print("  Phase 1: 베이스라인" + (f" [{algo_filter.upper()} only]" if algo_filter else ""))
     print("★" * 30)
-    experiments = build_baseline()
+    experiments = build_baseline(device, algo_filter)
     print_plan(experiments)
     for exp in experiments:
         if result_exists(exp["name"]):
@@ -140,31 +141,32 @@ def run_baseline(dry_run: bool):
 # 실험 2: Reward Shaping
 # =============================================================================
 
-def build_reward_shaping() -> list[dict]:
+def build_reward_shaping(device: str = None, algo_filter: str = None) -> list[dict]:
+    algos = [algo_filter] if algo_filter else ALGOS
     experiments = []
-    for algo in ALGOS:
+    for algo in algos:
         for reward_type in REWARD_TYPES:
             exp_name = f"{algo}_{ENV}_{reward_type}_seed42"
-            experiments.append({
-                "name": exp_name,
-                "cmd": [
-                    sys.executable, "-m", "src.train",
-                    "--algo", algo,
-                    "--env", ENV,
-                    "--seed", "42",
-                    "--total-steps", str(TOTAL_STEPS),
-                    "--reward-type", reward_type,
-                    "--tensorboard",
-                ],
-            })
+            cmd = [
+                sys.executable, "-m", "src.train",
+                "--algo", algo,
+                "--env", ENV,
+                "--seed", "42",
+                "--total-steps", str(TOTAL_STEPS),
+                "--reward-type", reward_type,
+                "--tensorboard",
+            ]
+            if device:
+                cmd += ["--device", device]
+            experiments.append({"name": exp_name, "cmd": cmd})
     return experiments
 
 
-def run_reward_shaping(dry_run: bool):
+def run_reward_shaping(dry_run: bool, device: str = None, algo_filter: str = None):
     print("\n" + "★" * 30)
-    print("  Phase 2: Reward Shaping")
+    print("  Phase 2: Reward Shaping" + (f" [{algo_filter.upper()} only]" if algo_filter else ""))
     print("★" * 30)
-    experiments = build_reward_shaping()
+    experiments = build_reward_shaping(device, algo_filter)
     print_plan(experiments)
     for exp in experiments:
         if result_exists(exp["name"]):
@@ -176,9 +178,14 @@ def run_reward_shaping(dry_run: bool):
 # 실험 3: HP 튜닝
 # =============================================================================
 
-def build_hp_tuning() -> list[dict]:
+def build_hp_tuning(algo_filter: str = None) -> list[dict]:
+    variants_map = (
+        {algo_filter: HP_VARIANTS[algo_filter]}
+        if algo_filter and algo_filter in HP_VARIANTS
+        else HP_VARIANTS
+    )
     experiments = []
-    for algo, variants in HP_VARIANTS.items():
+    for algo, variants in variants_map.items():
         for v in variants:
             exp_name = f"{algo}_{ENV}_hp_{v['tag']}_seed42"
             experiments.append({
@@ -189,11 +196,11 @@ def build_hp_tuning() -> list[dict]:
     return experiments
 
 
-def run_hp_tuning(dry_run: bool):
+def run_hp_tuning(dry_run: bool, device: str = None, algo_filter: str = None):
     print("\n" + "★" * 30)
-    print("  Phase 3: HP 튜닝")
+    print("  Phase 3: HP 튜닝" + (f" [{algo_filter.upper()} only]" if algo_filter else ""))
     print("★" * 30)
-    experiments = build_hp_tuning()
+    experiments = build_hp_tuning(algo_filter)
     print_plan(experiments)
 
     for exp in experiments:
@@ -217,9 +224,11 @@ def run_hp_tuning(dry_run: bool):
             "--seed", "42",
             "--total-steps", str(TOTAL_STEPS),
             "--config", str(config_path),
-            "--save-dir", f"results",
+            "--exp-name", exp["name"],
             "--tensorboard",
         ]
+        if device:
+            cmd += ["--device", device]
         run_cmd(cmd, dry_run)
 
     # 임시 config 폴더 정리
@@ -327,7 +336,7 @@ def find_best_settings(results_dir: str = "results") -> dict:
     }
 
 
-def run_best_combination(dry_run: bool):
+def run_best_combination(dry_run: bool, device: str = None):
     print("\n" + "★" * 30)
     print("  Phase 4: 최적 조합")
     print("★" * 30)
@@ -376,6 +385,8 @@ def run_best_combination(dry_run: bool):
     ]
     if reward:
         cmd += ["--reward-type", reward]
+    if device:
+        cmd += ["--device", device]
 
     print(f"\n  실험명: {exp_name}\n")
 
@@ -407,36 +418,54 @@ def main():
         action="store_true",
         help="명령어만 출력하고 실제로 실행하지 않음",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None,
+        choices=["auto", "cpu", "cuda"],
+        help="학습 디바이스 (기본: config 값 사용, cpu 강제 지정 가능)",
+    )
+    parser.add_argument(
+        "--algo",
+        type=str,
+        default=None,
+        choices=["ppo", "sac", "td3"],
+        help="특정 알고리즘만 실행 (기본: 전체 알고리즘)",
+    )
     args = parser.parse_args()
 
     if args.dry_run:
         print("\n  [DRY-RUN 모드] 명령어만 출력합니다.\n")
+    if args.device:
+        print(f"\n  [디바이스 오버라이드] --device {args.device}")
+    if args.algo:
+        print(f"\n  [알고리즘 필터] {args.algo.upper()} 만 실행")
 
     total = (
-        len(build_baseline()) +
-        len(build_reward_shaping()) +
-        len(build_hp_tuning())
+        len(build_baseline(algo_filter=args.algo)) +
+        len(build_reward_shaping(algo_filter=args.algo)) +
+        len(build_hp_tuning(algo_filter=args.algo))
     )
     print(f"\n  환경: {ENV} | 총 예정 실험: {total}개")
     print(f"  스텝: {TOTAL_STEPS:,} / 실험")
 
     if args.phase in ("all", "baseline"):
-        run_baseline(args.dry_run)
+        run_baseline(args.dry_run, args.device, args.algo)
 
     if args.phase in ("all", "reward"):
-        run_reward_shaping(args.dry_run)
+        run_reward_shaping(args.dry_run, args.device, args.algo)
 
     if args.phase in ("all", "hp"):
-        run_hp_tuning(args.dry_run)
+        run_hp_tuning(args.dry_run, args.device, args.algo)
 
     if args.phase == "all":
         run_eval_all(args.dry_run)
-        run_best_combination(args.dry_run)
+        run_best_combination(args.dry_run, args.device)
         run_eval_all(args.dry_run)   # 최적 조합 포함 재평가
         run_report(args.dry_run)
 
     if args.phase == "best":
-        run_best_combination(args.dry_run)
+        run_best_combination(args.dry_run, args.device)
 
     print("\n\n  모든 실험 완료!")
 

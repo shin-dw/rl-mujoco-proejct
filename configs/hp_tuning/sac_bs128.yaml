@@ -36,7 +36,7 @@ ppo:
   entropy_coef: 0.0
   gae_lambda: 0.95
   lr_actor: 0.0003
-  lr_critic: 0.0003
+  lr_critic: 0.0001
   max_grad_norm: 0.5
   n_epochs: 10
   n_steps: 2048
@@ -54,7 +54,9 @@ sac:
   learning_starts: 10000
   lr_actor: 0.0003
   lr_alpha: 0.0003
-  lr_critic: 0.0003
+  lr_critic: 0.0001
+  normalize_reward: false
+  reward_scale: 10.0
   tau: 0.005
   update_freq: 1
 td3:
@@ -64,7 +66,7 @@ td3:
   gradient_steps: 1
   learning_starts: 10000
   lr_actor: 0.0003
-  lr_critic: 0.0003
+  lr_critic: 0.0001
   noise_clip: 0.5
   policy_delay: 2
   target_noise: 0.2

@@ -1,0 +1,8 @@
+.venv/
+results/
+report/
+__pycache__/
+**/__pycache__/
+*.pyc
+configs/hp_tuning/
+.git/

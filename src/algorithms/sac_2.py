@@ -56,9 +56,6 @@ class SAC(BaseAlgorithm):
         self.batch_size = batch_size
         self.learning_starts = learning_starts
         self.auto_entropy = auto_entropy
-        
-        # ⭐⭐⭐ [수정된 부분 1] Humanoid 환경에 맞게 보상 스케일 축소 파라미터 추가
-        self.reward_scale = 0.1
 
         # --- 네트워크 초기화 ---
 
@@ -86,6 +83,11 @@ class SAC(BaseAlgorithm):
 
         # --- 엔트로피 계수 (α) ---
         if auto_entropy:
+            # target_entropy 결정:
+            # - 명시 지정 시 그대로 사용
+            # - 미지정 시 -act_dim (표준값, max_action=1.0 환경에 적합)
+            # ※ Humanoid-v5 (max_action=0.4)는 log_prob에 +act_dim*|log(0.4)|=+15.57 보정이
+            #    추가되어 기본 -17로는 std가 0.1로 붕괴함. -8.5로 낮추면 std≈0.6 평형 유지.
             if target_entropy is not None:
                 self.target_entropy = float(target_entropy)
             else:
@@ -170,29 +172,22 @@ class SAC(BaseAlgorithm):
             next_action, next_log_prob = self.actor.rsample_with_log_prob(
                 batch.next_observations
             )
-            
-            # ⭐⭐⭐ [수정된 부분 2] Log Prob이 음의 무한대로 발산하여 Q값이 폭발하는 것 방지
-            next_log_prob = torch.clamp(next_log_prob, min=-20.0, max=2.0)
-            
             # Target Q 값 계산
             next_q1, next_q2 = self.critic_target(batch.next_observations, next_action)
             next_q = torch.min(next_q1, next_q2) - self.alpha * next_log_prob
-            
-            # ⭐⭐⭐ [수정된 부분 3] 보상에 스케일을 곱하여 거대한 보상 단위 축소
-            scaled_rewards = batch.rewards * self.reward_scale
-            target_q = scaled_rewards + self.gamma * (1.0 - batch.dones) * next_q
+            # TD target
+            target_q = batch.rewards + self.gamma * (1.0 - batch.dones) * next_q
 
         # 현재 Q 값
         q1, q2 = self.critic(batch.observations, batch.actions)
 
-        # Twin Q 손실 — Huber loss 대신 MSE 사용
+        # Twin Q 손실 — Huber loss: 큰 TD 오차를 선형으로 처리해 Q값 폭발 완화
         critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        
-        # ⭐⭐⭐ [수정된 부분 4] Critic Gradient Clipping을 40.0에서 1.0으로 복구하여 급격한 파라미터 붕괴 방지
-        nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
+        # max_norm=1.0: Q값 폭발 방지. 0.5는 과도하게 억제하므로 1.0 사용.
+        nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=40.0)
         self.critic_optimizer.step()
 
         return critic_loss.item()
@@ -206,9 +201,6 @@ class SAC(BaseAlgorithm):
         Actor 업데이트 시 critic parameter에 gradient가 흐르지 않도록 freeze.
         """
         action, log_prob = self.actor.rsample_with_log_prob(batch.observations)
-        
-        # ⭐⭐⭐ [수정된 부분 5] Actor 업데이트 시에도 Log Prob 발산 방지 적용
-        log_prob = torch.clamp(log_prob, min=-20.0, max=2.0)
 
         # critic freeze: actor loss backward 시 critic에 불필요한 gradient 방지
         for param in self.critic.parameters():
@@ -229,7 +221,12 @@ class SAC(BaseAlgorithm):
         return actor_loss.item(), log_prob.mean().item()
 
     def _update_alpha(self, log_prob_mean: float) -> float:
-        """엔트로피 계수 자동 조절."""
+        """엔트로피 계수 자동 조절.
+
+        표준 구현: loss = -log_alpha * (log_prob + target_entropy)
+        gradient w.r.t log_alpha = -(log_prob + target_entropy) ← alpha와 무관한 상수 크기
+        exp(log_alpha) 버전은 alpha가 커질수록 gradient도 커져 overshooting 위험 있음.
+        """
         log_prob_tensor = torch.tensor(log_prob_mean, device=self.device)
         alpha_loss = -(self.log_alpha * (log_prob_tensor + self.target_entropy).detach())
 
@@ -237,7 +234,9 @@ class SAC(BaseAlgorithm):
         alpha_loss.backward()
         self.alpha_optimizer.step()
 
-        # 이미 넓게 풀어둔 부분 유지
+        # alpha 범위: [0.1, 5.0] → log_alpha ∈ [-2.3, 1.61]
+        # - min=-4.6(0.01) → -2.3(0.1): 최솟값이 너무 작으면 entropy 규제 소멸 → std 붕괴
+        # - max=0.0(1.0)   → 1.61(5.0): std가 붕괴 시 alpha가 5.0까지 올라 강제 복원
         self.log_alpha.data.clamp_(min=-20.0, max=5.0)
 
         return alpha_loss.item()

@@ -162,15 +162,17 @@ class RolloutBuffer:
         for t in reversed(range(self.n_steps)):
             if t == self.n_steps - 1:
                 next_value = last_value
-                next_done = float(last_done)
+                next_non_terminal = 1.0 - float(last_done)
             else:
                 next_value = self.values[t + 1]
-                next_done = self.dones[t + 1]
+                # dones[t]는 step t 행동 후 에피소드 종료 여부
+                # done_t=1이면 V(s_{t+1})을 부트스트래핑에 사용하지 않아야 함
+                next_non_terminal = 1.0 - self.dones[t]
 
             # TD 오차
-            delta = self.rewards[t] + self.gamma * next_value * (1.0 - next_done) - self.values[t]
-            # GAE 재귀
-            last_gae = delta + self.gamma * self.gae_lambda * (1.0 - next_done) * last_gae
+            delta = self.rewards[t] + self.gamma * next_value * next_non_terminal - self.values[t]
+            # GAE 재귀: done이면 advantage도 초기화 (새 에피소드와 섞이지 않도록)
+            last_gae = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae
             self.advantages[t] = last_gae
 
         # 리턴 = 어드밴티지 + 밸류

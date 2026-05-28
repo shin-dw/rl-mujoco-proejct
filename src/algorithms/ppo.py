@@ -59,14 +59,16 @@ class PPO(BaseAlgorithm):
         self.max_grad_norm = max_grad_norm
         self.normalize_advantage = normalize_advantage
 
-        # 네트워크 초기화
+        # 네트워크 초기화 (PPO: Orthogonal 초기화로 학습 안정성 향상)
         self.actor = GaussianActor(
             obs_dim, act_dim, hidden_dims, activation,
             state_dependent_std=False,  # PPO: state-independent std
+            apply_ortho_init=True,
         ).to(self.device)
 
         self.critic = VNetwork(
             obs_dim, hidden_dims, activation,
+            apply_ortho_init=True,
         ).to(self.device)
 
         # 옵티마이저

@@ -162,11 +162,13 @@ class TD3(BaseAlgorithm):
         # 현재 Q 값
         q1, q2 = self.critic(batch.observations, batch.actions)
 
-        # Twin Q 손실
-        critic_loss = F.mse_loss(q1, target_q) + F.mse_loss(q2, target_q)
+        # Twin Q 손실 — Huber loss: 큰 TD 오차를 선형으로 처리해 Q값 폭발 완화
+        critic_loss = F.huber_loss(q1, target_q) + F.huber_loss(q2, target_q)
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        # Critic에는 gradient clipping 미적용: 논문 원본 구현과 동일.
+        # max_norm=0.5는 Q값이 커질수록 critic 업데이트를 과도하게 억제하여 발산 유발.
         self.critic_optimizer.step()
 
         return critic_loss.item()
@@ -175,23 +177,26 @@ class TD3(BaseAlgorithm):
         """
         결정적 정책 업데이트.
 
-        max E[Q1(s, π(s))]  (Q1만 사용)
+        max E[Q1(s, π(s))]  (Q1만 사용 — TD3 논문 원본)
+        Actor 업데이트 시 critic parameter에 gradient가 흐르지 않도록 freeze.
         """
-        # Critic 파라미터 고정
-        for param in self.critic.parameters():
-            param.requires_grad = False
-
         action = self.actor(batch.observations)
+
+        # critic freeze: actor loss backward 시 critic에 불필요한 gradient 방지
+        for param in self.critic.parameters():
+            param.requires_grad_(False)
+
         q1 = self.critic.q1_forward(batch.observations, action)
         actor_loss = -q1.mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        # Actor에는 gradient clipping 유지 (정책 업데이트 안정화)
+        nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=0.5)
         self.actor_optimizer.step()
 
-        # Critic 파라미터 다시 활성화
         for param in self.critic.parameters():
-            param.requires_grad = True
+            param.requires_grad_(True)
 
         return actor_loss.item()
 

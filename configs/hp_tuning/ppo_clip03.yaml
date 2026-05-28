@@ -1,5 +1,5 @@
 common:
-  device: auto
+  device: cpu
   eval_episodes: 10
   eval_freq: 10000
   gamma: 0.99

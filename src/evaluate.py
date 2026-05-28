@@ -19,6 +19,7 @@ from typing import List
 from .algorithms.ppo import PPO
 from .algorithms.sac import SAC
 from .algorithms.td3 import TD3
+from .common.env_wrapper import NormalizeObservation
 
 
 def parse_args():
@@ -42,6 +43,34 @@ def create_algo_for_eval(algo_name, obs_dim, act_dim):
     elif algo_name == "td3":
         return TD3(obs_dim, act_dim)
     raise ValueError(f"지원하지 않는 알고리즘: {algo_name}")
+
+
+def load_obs_stats(model_path: str):
+    """모델과 함께 저장된 obs 정규화 통계를 불러옵니다."""
+    stats_path = model_path.replace(".pt", "_obs_stats.npz")
+    if not os.path.exists(stats_path):
+        return None
+    data = np.load(stats_path)
+    return {
+        "running_mean": data["running_mean"],
+        "running_var": data["running_var"],
+        "count": int(data["count"][0]),
+    }
+
+
+def make_eval_env(env_id: str, model_path: str, render_mode=None) -> gym.Env:
+    """obs 통계가 있으면 NormalizeObservation을 복원한 평가 환경을 생성합니다."""
+    env = gym.make(env_id, render_mode=render_mode)
+    obs_stats = load_obs_stats(model_path)
+    if obs_stats is not None:
+        env = NormalizeObservation(env)
+        env.running_mean = obs_stats["running_mean"]
+        env.running_var = obs_stats["running_var"]
+        env.count = obs_stats["count"]
+        print(f"  [정규화] obs 통계 복원 완료 (count={obs_stats['count']:,})")
+    else:
+        print("  [경고] obs 통계 파일(_obs_stats.npz)을 찾을 수 없습니다. raw obs로 평가합니다.")
+    return env
 
 
 def evaluate_model(algo, env, n_episodes: int) -> dict:
@@ -111,16 +140,9 @@ def main():
     args = parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # 학습 곡선 그리기 (--plot 옵션)
-    if hasattr(args, 'plot') and args.plot and args.log_dir:
-        plot_training_curve(
-            args.log_dir,
-            os.path.join(args.output_dir, f"{args.algo}_{args.env}_curve.png"),
-        )
-
-    # 환경 생성
+    # 환경 생성 (obs 통계 복원 포함)
     render_mode = "human" if args.render else None
-    env = gym.make(args.env, render_mode=render_mode)
+    env = make_eval_env(args.env, args.model, render_mode=render_mode)
 
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.shape[0]

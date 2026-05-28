@@ -36,6 +36,8 @@ class Logger:
         self.csv_file = None
         self.csv_writer = None
         self.csv_header_written = False
+        self._all_rows: list = []           # 전체 행 누적 (헤더 확장 시 재작성용)
+        self._all_fields: set = set()       # 지금까지 등장한 모든 키 추적
 
         # 메트릭 버퍼 (주기적 평균 계산용)
         self.metric_buffer: Dict[str, list] = defaultdict(list)
@@ -122,23 +124,35 @@ class Logger:
         print(" | ".join(parts))
 
     def _write_csv(self, metrics: Dict[str, Any]):
-        """메트릭을 CSV 파일에 기록합니다."""
-        if not self.csv_header_written:
+        """
+        메트릭을 CSV 파일에 기록합니다.
+
+        eval/* 등 새 키가 등장할 때마다 헤더를 확장하고 전체 파일을
+        재작성합니다. 이전 행은 새 키 자리를 빈 문자열로 채웁니다.
+        (이전 구현은 새 키 등장 시 헤더만 바꿔 기존 행을 모두 날렸습니다.)
+        """
+        # 이번 행을 누적
+        self._all_rows.append(dict(metrics))
+        new_keys = set(metrics.keys()) - self._all_fields
+        self._all_fields |= set(metrics.keys())
+
+        if not self.csv_header_written or new_keys:
+            # 최초 작성 또는 새 키 등장 → 전체 파일 재작성
+            if self.csv_file:
+                self.csv_file.close()
             self.csv_file = open(self.csv_path, "w", newline="", encoding="utf-8")
-            self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=sorted(metrics.keys()))
+            fieldnames = sorted(self._all_fields)
+            self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=fieldnames)
             self.csv_writer.writeheader()
+            for row in self._all_rows:
+                self.csv_writer.writerow({k: row.get(k, "") for k in fieldnames})
             self.csv_header_written = True
+        else:
+            # 기존 헤더와 동일 → 마지막 행만 추가
+            fieldnames = sorted(self._all_fields)
+            self.csv_writer.writerow({k: metrics.get(k, "") for k in fieldnames})
 
-        # 새로운 키가 추가된 경우 파일을 다시 작성
-        if self.csv_writer and set(metrics.keys()) != set(self.csv_writer.fieldnames):
-            self.csv_file.close()
-            self.csv_file = open(self.csv_path, "w", newline="", encoding="utf-8")
-            self.csv_writer = csv.DictWriter(self.csv_file, fieldnames=sorted(metrics.keys()))
-            self.csv_writer.writeheader()
-
-        if self.csv_writer:
-            self.csv_writer.writerow({k: metrics.get(k, "") for k in self.csv_writer.fieldnames})
-            self.csv_file.flush()
+        self.csv_file.flush()
 
     def close(self):
         """리소스를 정리합니다."""

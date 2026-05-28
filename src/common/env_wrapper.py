@@ -84,7 +84,11 @@ class NormalizeReward(gym.Wrapper):
         if terminated or truncated:
             self.discounted_return = 0.0
 
-        normalized_reward = reward / (np.sqrt(self.running_var) + self.epsilon)
+        # running_var가 수렴하기 전(초기 수십 에피소드)에 0에 가까워지는 것을 방지.
+        # max(running_var, 1.0) 로 클램핑하면 초기엔 정규화 없이 raw reward를 그대로 사용하고,
+        # 분산이 충분히 추정된 이후 (>> 1.0) 부터 정규화가 효과를 발휘한다.
+        std = np.sqrt(max(self.running_var, 1.0)) + self.epsilon
+        normalized_reward = reward / std
         return obs, normalized_reward, terminated, truncated, info
 
 
@@ -136,6 +140,25 @@ class DomainRandomizationWrapper(gym.Wrapper):
         return self.env.reset(**kwargs)
 
 
+class ScaleReward(gym.Wrapper):
+    """
+    보상을 고정 상수로 나누어 스케일링합니다.
+
+    NormalizeReward와 달리 스케일이 학습 중 변하지 않으므로
+    Replay Buffer와 함께 안전하게 사용할 수 있습니다.
+    reward_scale=5.0이면 reward / 5.0 을 반환합니다.
+    """
+
+    def __init__(self, env: gym.Env, scale: float = 5.0):
+        super().__init__(env)
+        self.scale = scale
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        info["original_reward"] = reward
+        return obs, reward / self.scale, terminated, truncated, info
+
+
 class CustomRewardWrapper(gym.Wrapper):
     """
     커스텀 리워드 함수를 적용하는 래퍼.
@@ -173,6 +196,7 @@ def make_env(
     domain_randomization: bool = False,
     dr_config: Optional[Dict] = None,
     custom_reward_fn: Optional[Callable] = None,
+    reward_scale: float = 1.0,
 ) -> gym.Env:
     """
     환경 생성 팩토리 함수.
@@ -183,11 +207,12 @@ def make_env(
         env_id: Gymnasium 환경 ID (예: "HalfCheetah-v5")
         seed: 랜덤 시드
         normalize_obs: 관측값 정규화 여부
-        normalize_reward: 보상 정규화 여부
+        normalize_reward: 보상 정규화 여부 (off-policy 알고리즘에는 비권장 — replay buffer와 비호환)
         gamma: 할인 계수 (보상 정규화에 사용)
         domain_randomization: Domain Randomization 적용 여부
         dr_config: Domain Randomization 설정
         custom_reward_fn: 커스텀 리워드 함수
+        reward_scale: 고정 보상 스케일 (reward / scale). off-policy 알고리즘 Q값 폭발 방지용.
 
     Returns:
         래퍼가 적용된 Gymnasium 환경
@@ -211,8 +236,12 @@ def make_env(
     if normalize_obs:
         env = NormalizeObservation(env)
 
-    # 보상 정규화
+    # 보상 정규화 (off-policy 알고리즘에는 replay buffer 비호환으로 비권장)
     if normalize_reward:
         env = NormalizeReward(env, gamma=gamma)
+
+    # 고정 보상 스케일링 (normalize_reward=False일 때 off-policy 알고리즘에 사용)
+    if reward_scale != 1.0:
+        env = ScaleReward(env, scale=reward_scale)
 
     return env
