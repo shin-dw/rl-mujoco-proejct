@@ -42,6 +42,7 @@ class PPO(BaseAlgorithm):
         value_loss_coef: float = 0.5,
         max_grad_norm: float = 0.5,
         normalize_advantage: bool = True,
+        lr_annealing: bool = False,
         device: str = "auto",
         seed: int = 42,
     ):
@@ -58,6 +59,9 @@ class PPO(BaseAlgorithm):
         self.value_loss_coef = value_loss_coef
         self.max_grad_norm = max_grad_norm
         self.normalize_advantage = normalize_advantage
+        self.lr_annealing = lr_annealing
+        self.lr_actor_init = lr_actor
+        self.lr_critic_init = lr_critic
 
         # 네트워크 초기화 (PPO: Orthogonal 초기화로 학습 안정성 향상)
         self.actor = GaussianActor(
@@ -80,6 +84,23 @@ class PPO(BaseAlgorithm):
             obs_dim, act_dim, n_steps, gamma, gae_lambda,
             device=str(self.device),
         )
+
+    def anneal_lr(self, current_step: int, total_steps: int) -> float:
+        """학습률 선형 감소.
+
+        lr(t) = lr_init × (1 - t / total_steps)
+        total_steps 도달 시 lr → 0.
+
+        lr_annealing=False이면 아무것도 하지 않음 (기존 실험 호환).
+        """
+        if not self.lr_annealing:
+            return self.lr_actor_init
+        frac = max(0.0, 1.0 - current_step / total_steps)
+        for pg in self.actor_optimizer.param_groups:
+            pg["lr"] = self.lr_actor_init * frac
+        for pg in self.critic_optimizer.param_groups:
+            pg["lr"] = self.lr_critic_init * frac
+        return self.lr_actor_init * frac
 
     def select_action(
         self,

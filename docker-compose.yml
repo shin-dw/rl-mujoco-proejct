@@ -220,6 +220,31 @@ services:
       "
 
   # ================================================================
+  # [PPO 달리기 특화] run_forward Reward Shaping
+  #
+  # 셔플링 문제 해결용:
+  #   - 전진 속도 4.0× 강화
+  #   - 1.0 m/s 미만 정체 페널티 -3.0
+  #   - y축 이탈 억제
+  #
+  # 실행:
+  #   docker compose run --rm train-ppo-run-forward
+  # ================================================================
+  train-ppo-run-forward:
+    build: .
+    volumes: *default-volumes
+    command: >
+      python -m src.train
+        --algo ppo
+        --env Humanoid-v5
+        --seed 42
+        --total-steps 20000000
+        --eval-freq 50000
+        --reward-type run_forward
+        --device cpu
+        --tensorboard
+
+  # ================================================================
   # [단일 실험] CPU
   # ================================================================
   train-single:

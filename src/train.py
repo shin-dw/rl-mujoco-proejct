@@ -62,7 +62,8 @@ def create_algorithm(name, obs_dim, act_dim, config, device="auto", seed=42, max
                     gamma, c.get("gae_lambda", 0.95), c.get("clip_ratio", 0.2),
                     c.get("n_epochs", 10), c.get("batch_size", 64), c.get("n_steps", 2048),
                     c.get("entropy_coef", 0.0), c.get("value_loss_coef", 0.5),
-                    c.get("max_grad_norm", 0.5), c.get("normalize_advantage", True), device, seed)
+                    c.get("max_grad_norm", 0.5), c.get("normalize_advantage", True),
+                    c.get("lr_annealing", False), device, seed)
     elif name == "sac":
         return SAC(obs_dim, act_dim, h, act, c.get("lr_actor", 3e-4), c.get("lr_critic", 3e-4),
                     c.get("lr_alpha", 3e-4), gamma, c.get("tau", 0.005), c.get("batch_size", 256),
@@ -101,6 +102,9 @@ def train_ppo(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, sa
     ep_ret, ep_len = 0.0, 0
 
     for step in range(1, total_steps + 1):
+        # LR 선형 감소 (lr_annealing=False이면 no-op)
+        algo.anneal_lr(step, total_steps)
+
         action, log_prob, value = algo.select_action(obs)
         # NOTE: 버퍼에는 원본 가우시안 샘플을 그대로 저장.
         # MuJoCo가 내부적으로 ctrlrange(±0.4)로 클리핑하므로 env.step에는 원본을 넘겨도 무방.
@@ -129,6 +133,8 @@ def train_ppo(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, sa
                 logger.log_scalar(k, v, step)
 
         if step % log_freq == 0:
+            if algo.lr_annealing:
+                logger.log_scalar("train/lr", algo.actor_optimizer.param_groups[0]["lr"], step)
             logger.dump(step)
         if step % eval_freq == 0:
             r = evaluator.evaluate(algo.select_action, step)
@@ -204,7 +210,7 @@ def main():
     reward_fn = get_reward_fn(args.env, args.reward_type) if args.reward_type else None
     dr_cfg = config.get("domain_randomization", {}) if args.domain_rand else None
     # SAC·TD3: normalize_reward는 replay buffer와 비호환 → 대신 reward_scale(고정 나눗셈) 사용
-    # PPO: advantage 정규화로 충분하므로 둘 다 기본값(False, 1.0)
+    # PPO: normalize_reward=False, reward_scale=10.0 (run_forward 리워드 크기 안정화)
     normalize_reward = config.get(args.algo, {}).get("normalize_reward", False)
     reward_scale = config.get(args.algo, {}).get("reward_scale", 1.0)
 

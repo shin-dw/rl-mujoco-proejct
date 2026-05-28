@@ -85,6 +85,59 @@ class HumanoidStableGait:
         return forward_reward + smoothness_penalty + action_diff_penalty
 
 
+def humanoid_run_forward(
+    obs: np.ndarray,
+    action: np.ndarray,
+    reward: float,
+    next_obs: np.ndarray,
+    info: Dict[str, Any],
+) -> float:
+    """
+    달리기 특화 보상 (Humanoid-v5).
+
+    문제: 기본 healthy_reward(5.0/step)가 전진 보상을 압도해
+         에이전트가 발을 조금씩만 움직이는 셔플링에 수렴함.
+
+    해결 전략:
+    - 전진 속도에 가중치(2.0×) → 달리기가 셔플링보다 유리하되 과도한 공격성 억제
+    - x_vel < 0.5m/s 구간에 완만한 정체 페널티(-1.0) → 셔플링 수익성 제거 (기존 -3.0은 과도)
+    - y축 이탈 억제 → 직진 달리기 유도
+    - 좌우 고관절 교차 보상 → 호핑 억제, 자연스러운 교차 보행 유도
+    - action_penalty 강화(0.1×) → MuJoCo 실제 control_cost(0.1)에 맞춤, 큰 토크 억제
+
+    설계 원칙 (v4 — 안전한 교차보행 유도):
+    - velocity_bonus가 주 신호 (달리기 동기 부여)
+    - hip_alternation은 작은 넛지 수준 (velocity의 ~8%) → reward hacking 방지
+    - 페널티 없음 — 초기 학습을 방해하지 않음
+    - base에 이미 control_cost(-0.1×Σa²) 포함 → action_penalty 추가 금지
+
+    계수 설계 근거:
+      velocity_bonus (x_vel=1.0): 2.0/step         ← 주 신호
+      hip_alternation max:         ±0.16/step       ← 부 신호 (8%)
+      → hip이 달리기를 지배하지 않으므로 reward hacking 불가
+
+    보상 비교 (per step):
+      셔플링    x_vel=0.3: base(5.3) + vel(0.6) + hip(~0)   ≈  5.9
+      보행      x_vel=1.0: base(6.0) + vel(2.0) + hip(+0.16) ≈  8.2
+      교차달리기 x_vel=2.5: base(7.5) + vel(5.0) + hip(+0.16) ≈ 12.7
+    """
+    x_vel = info.get("x_velocity", 0.0)
+
+    # 기본 MuJoCo 보상 (healthy_reward + forward + control_cost 이미 포함)
+    base = reward
+
+    # 전진 속도 보너스 (주 신호)
+    velocity_bonus = 2.0 * max(x_vel, 0.0)
+
+    # 좌우 고관절 교차 보상 (작은 넛지 — velocity의 8% 수준)
+    # 반대 방향 → 곱 음수 → 보너스 양수 (교차 O)
+    # 같은 방향 → 곱 양수 → 페널티 (호핑 억제)
+    # max = 1.0 × 0.4² = ±0.16/step
+    hip_alternation_bonus = -1.0 * (action[3] * action[7])
+
+    return base + velocity_bonus + hip_alternation_bonus
+
+
 # =============================================================================
 # 리워드 함수 레지스트리
 # =============================================================================
@@ -93,6 +146,7 @@ REWARD_REGISTRY = {
     "Humanoid-v5": {
         "balanced_walk": humanoid_balanced_walk,
         "stable_gait": HumanoidStableGait,
+        "run_forward": humanoid_run_forward,
     },
 }
 
