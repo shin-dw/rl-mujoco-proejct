@@ -99,56 +99,40 @@ def humanoid_run_forward(
     info: Dict[str, Any],
 ) -> float:
     """
-    달리기 특화 보상 (Humanoid-v5).
-
-    문제: 기본 healthy_reward(5.0/step)가 전진 보상을 압도해
-         에이전트가 발을 조금씩만 움직이는 셔플링에 수렴함.
-
-    해결 전략:
-    - 전진 속도에 가중치(2.0×) → 달리기가 셔플링보다 유리하되 과도한 공격성 억제
-    - x_vel < 0.5m/s 구간에 완만한 정체 페널티(-1.0) → 셔플링 수익성 제거 (기존 -3.0은 과도)
-    - y축 이탈 억제 → 직진 달리기 유도
-    - 좌우 고관절 교차 보상 → 호핑 억제, 자연스러운 교차 보행 유도
-    - action_penalty 강화(0.1×) → MuJoCo 실제 control_cost(0.1)에 맞춤, 큰 토크 억제
-
-    설계 원칙 (v4 — 안전한 교차보행 유도):
-    - velocity_bonus가 주 신호 (달리기 동기 부여)
-    - hip_alternation은 작은 넛지 수준 (velocity의 ~8%) → reward hacking 방지
-    - 페널티 없음 — 초기 학습을 방해하지 않음
-    - base에 이미 control_cost(-0.1×Σa²) 포함 → action_penalty 추가 금지
-
-    계수 설계 근거:
-      velocity_bonus (x_vel=1.0): 2.0/step         ← 주 신호
-      hip_alternation max:         ±0.16/step       ← 부 신호 (8%)
-      → hip이 달리기를 지배하지 않으므로 reward hacking 불가
-
-    보상 비교 (per step):
-      셔플링    x_vel=0.3: base(5.3) + vel(0.6) + hip(~0)   ≈  5.9
-      보행      x_vel=1.0: base(6.0) + vel(2.0) + hip(+0.16) ≈  8.2
-      교차달리기 x_vel=2.5: base(7.5) + vel(5.0) + hip(+0.16) ≈ 12.7
+    달리기 특화 보상 (좀비/펭귄 걸음 완벽 치료용)
     """
     x_vel = info.get("x_velocity", 0.0)
-
-    # 기본 MuJoCo 보상 (healthy_reward + forward + control_cost 이미 포함)
-    base = reward
-
-    # 전진 속도 보너스 (주 신호)
-    velocity_bonus = 2.0 * max(x_vel, 0.0)
-
-    # ★ PPO 전용 주의사항:
-    #   PPO actor는 unbounded Gaussian → action이 ±수십까지 가능
-    #   MuJoCo는 ctrlrange(±0.4)로 clip하지만 reward_fn은 clip 전 raw action을 받음
-    #   → action 값을 그대로 곱하면 reward가 수만으로 폭발 (reward hacking)
-    #   → 반드시 MuJoCo ctrlrange로 clip 후 사용해야 함
+    y_vel = info.get("y_velocity", 0.0)
+    
+    # 기본 생존 보상(+5.0)이 포함된 base
+    base = reward 
+    
+    # 1. 전진 보상 강화 (직진 의지 펌핑)
+    velocity_bonus = 3.0 * max(x_vel, 0.0)
+    
+    # 2. Y축 이탈 맹독성 페널티 (대각선/게걸음 완벽 차단)
+    # 기존 -0.3에서 -1.0으로 대폭 올려 옆으로 새는 즉시 엄청난 감점을 줍니다.
+    y_velocity_penalty = -1.0 * abs(y_vel)
+    
+    # 3. ★ 셔플링(좀비걸음) 사형 선고 ★
+    # 속도가 0.5m/s 이하로 꼼지락거리면 생존 보상을 깎아버립니다. 
+    # 이제 에이전트는 살기 위해서 무조건 무릎을 굽히고 속도를 내야만 합니다.
+    shuffle_penalty = 0.0
+    if x_vel < 0.5:
+        shuffle_penalty = -2.0 
+        
+    # 액션 클리핑 (리워드 해킹 방지)
     clipped = np.clip(action, -0.4, 0.4)
-
-    # 좌우 고관절 교차 보상 (작은 넛지 — velocity의 ~8% 수준)
-    # 반대 방향 → 곱 음수 → 보너스 양수 (교차 O)
-    # 같은 방향 → 곱 양수 → 페널티 (호핑 억제)
-    # max = 1.0 × 0.4² = ±0.16/step (bounded, hacking 불가)
-    hip_alternation_bonus = -1.0 * (clipped[3] * clipped[7])
-
-    return base + velocity_bonus + hip_alternation_bonus
+    
+    # 4. 고관절 교차(Pitch: 5, 9) 유도
+    hip_alternation_bonus = -1.0 * (clipped[5] * clipped[9])
+    
+    # 5. 무릎 관절 사용 강제 넛지 (Pitch: 6, 10)
+    # 6번(오른무릎)과 10번(왼무릎) 관절에 힘을 줄 때마다 소소한 보너스를 줍니다.
+    # 에이전트가 "어? 무릎을 굽히니까 점수를 주네?" 하고 깨닫게 만듭니다.
+    knee_usage_bonus = 0.2 * (abs(clipped[6]) + abs(clipped[10]))
+    
+    return base + velocity_bonus + y_velocity_penalty + shuffle_penalty + hip_alternation_bonus + knee_usage_bonus
 
 
 # =============================================================================
