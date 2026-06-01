@@ -98,41 +98,64 @@ def humanoid_run_forward(
     next_obs: np.ndarray,
     info: Dict[str, Any],
 ) -> float:
-    """
-    달리기 특화 보상 (좀비/펭귄 걸음 완벽 치료용)
-    """
+    
     x_vel = info.get("x_velocity", 0.0)
     y_vel = info.get("y_velocity", 0.0)
-    
-    # 기본 생존 보상(+5.0)이 포함된 base
-    base = reward 
-    
-    # 1. 전진 보상 강화 (직진 의지 펌핑)
-    velocity_bonus = 3.0 * max(x_vel, 0.0)
-    
-    # 2. Y축 이탈 맹독성 페널티 (대각선/게걸음 완벽 차단)
-    # 기존 -0.3에서 -1.0으로 대폭 올려 옆으로 새는 즉시 엄청난 감점을 줍니다.
-    y_velocity_penalty = -1.0 * abs(y_vel)
-    
-    # 3. ★ 셔플링(좀비걸음) 사형 선고 ★
-    # 속도가 0.5m/s 이하로 꼼지락거리면 생존 보상을 깎아버립니다. 
-    # 이제 에이전트는 살기 위해서 무조건 무릎을 굽히고 속도를 내야만 합니다.
-    shuffle_penalty = 0.0
-    if x_vel < 0.5:
-        shuffle_penalty = -2.0 
-        
-    # 액션 클리핑 (리워드 해킹 방지)
+    base = reward
+
     clipped = np.clip(action, -0.4, 0.4)
+
+    # 1. 전진 속도 보너스 (그대로 유지)
+    velocity_bonus = 3.0 * max(x_vel, 0.0)
+
+    # 2. [수정] 후방 기울임(Leaning Backward) 철퇴 ────────────────────────
+    # obs[1]~[4]는 몸통의 쿼터니언 (w, x, y, z)
+    w = float(next_obs[1])
+    x = float(next_obs[2])
+    y = float(next_obs[3])
+    z = float(next_obs[4])
+
+    # 몸통의 로컬 Up(정수리 방향) 벡터가 전진 방향(X축)으로 얼마나 기울었는지 계산
+    # ux > 0: 앞으로 숙임 (육상 선수 폼)
+    # ux < 0: 뒤로 누움 (매트릭스 회피 폼)
+    ux = 2.0 * (x * z + w * y)
+
+    posture_penalty = 0.0
+    if ux < 0:
+        # 뒤로 눕는 자세에 대해 각도에 비례한 치명적인 페널티 부여
+        posture_penalty = -10.0 * abs(ux)
     
-    # 4. 고관절 교차(Pitch: 5, 9) 유도
-    hip_alternation_bonus = -1.0 * (clipped[5] * clipped[9])
+    # 너무 극단적으로 앞으로 고꾸라지는 것만 방지 (약 60도 이상)
+    torso_upright = 1.0 - 2.0 * (x ** 2 + y ** 2)
+    if torso_upright < 0.5:
+        posture_penalty -= 2.0
+
+    # ── 3. 고관절 교차 보너스 및 캥거루 점프 사형 선고 ──
+    hip_product = clipped[5] * clipped[9]
     
-    # 5. 무릎 관절 사용 강제 넛지 (Pitch: 6, 10)
-    # 6번(오른무릎)과 10번(왼무릎) 관절에 힘을 줄 때마다 소소한 보너스를 줍니다.
-    # 에이전트가 "어? 무릎을 굽히니까 점수를 주네?" 하고 깨닫게 만듭니다.
-    knee_usage_bonus = 0.2 * (abs(clipped[6]) + abs(clipped[10]))
-    
-    return base + velocity_bonus + y_velocity_penalty + shuffle_penalty + hip_alternation_bonus + knee_usage_bonus
+    if hip_product > 0:
+        # 양 다리가 같은 방향으로 힘을 받음 = 양발 점프 중 (캥거루)
+        # 속도 보너스를 다 깎아먹을 만큼 엄청난 치명적 감점을 부여합니다.
+        hip_alternation_bonus = -20.0 * hip_product
+    else:
+        # 양 다리가 반대 방향으로 힘을 받음 = 정상 교차 중
+        # 정상적인 교차 보행에는 기존과 비슷한 수준의 보너스를 줍니다.
+        hip_alternation_bonus = -2.0 * hip_product
+
+    # 4. 무릎 및 팔 스윙 (보조 역할로 유지)
+    knee_usage_bonus = 0.5 * (abs(clipped[6]) + abs(clipped[10]))
+    if len(clipped) > 16:
+        arm_swing_bonus = -0.5 * (clipped[15] * clipped[5] + clipped[16] * clipped[9])
+    else:
+        arm_swing_bonus = 0.0
+
+    # 5. Y축 및 셔플링 페널티 (유지)
+    y_penalty = -1.0 * abs(y_vel)
+    shuffle_penalty = -2.0 if x_vel < 0.5 else 0.0
+
+    return (base + velocity_bonus + posture_penalty
+            + hip_alternation_bonus + knee_usage_bonus
+            + arm_swing_bonus + y_penalty + shuffle_penalty)
 
 
 # =============================================================================
