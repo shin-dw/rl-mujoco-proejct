@@ -47,7 +47,7 @@ reward_shaping:
   type: default
 sac:
   auto_entropy: true
-  batch_size: 256
+  batch_size: 512
   buffer_size: 1000000
   gradient_steps: 1
   init_alpha: 0.2
@@ -58,7 +58,7 @@ sac:
   normalize_reward: false
   reward_scale: 10.0
   tau: 0.005
-  update_freq: 1
+  update_freq: 4
 td3:
   batch_size: 256
   buffer_size: 1000000

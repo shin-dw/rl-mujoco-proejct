@@ -76,6 +76,8 @@ services:
         --algo ppo
         --env Humanoid-v5
         --seed 42
+        --total-steps 20000000
+        --eval-freq 50000
         --device cpu
         --tensorboard
 
@@ -242,6 +244,57 @@ services:
         --eval-freq 50000
         --reward-type run_forward
         --device cpu
+        --tensorboard
+
+  # ================================================================
+  # [Best SAC 20M] sac_hp_lra1e-4 — GPU 0
+  #
+  # 실행 전 기존 결과 삭제 필수:
+  #   Remove-Item -Recurse -Force results\sac_Humanoid-v5_hp_lra1e-4_seed42
+  #
+  # 실행:
+  #   docker compose run --rm train-sac-20m
+  # ================================================================
+  train-sac-20m:
+    build: .
+    volumes: *default-volumes
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+    <<: *gpu0-resources
+    command: >
+      python -m src.train
+        --algo sac
+        --env Humanoid-v5
+        --seed 42
+        --config configs/hp_tuning/sac_lra1e-4.yaml
+        --total-steps 20000000
+        --eval-freq 50000
+        --device cuda
+        --tensorboard
+
+  # ================================================================
+  # [Best TD3 20M] td3_baseline — GPU 1
+  #
+  # 실행 전 기존 결과 삭제 필수:
+  #   Remove-Item -Recurse -Force results\td3_Humanoid-v5_seed42
+  #
+  # 실행:
+  #   docker compose run --rm train-td3-20m
+  # ================================================================
+  train-td3-20m:
+    build: .
+    volumes: *default-volumes
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    <<: *gpu1-resources
+    command: >
+      python -m src.train
+        --algo td3
+        --env Humanoid-v5
+        --seed 42
+        --total-steps 20000000
+        --eval-freq 50000
+        --device cuda
         --tensorboard
 
   # ================================================================

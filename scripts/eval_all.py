@@ -12,6 +12,7 @@ results/ 디렉토리에서 학습 완료된 모든 모델을 자동 탐색하�
 import argparse, os, sys, re, csv
 import numpy as np
 import gymnasium as gym
+import torch
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -19,11 +20,44 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.algorithms.ppo import PPO
 from src.algorithms.sac import SAC
 from src.algorithms.td3 import TD3
+# 학습 시와 동일한 커스텀 래퍼 사용 (gymnasium 내장 NormalizeObservation과 다름)
+from src.common.env_wrapper import NormalizeObservation as ProjectNormalizeObs
 
 ALGO_MAP = {"ppo": PPO, "sac": SAC, "td3": TD3}
+
+
+def infer_hidden_dims(model_path: str, algo_name: str):
+    """체크포인트 weight shape에서 hidden_dims를 자동 추론."""
+    try:
+        state = torch.load(model_path, map_location="cpu", weights_only=False)
+        actor = state.get("actor", {})
+
+        if algo_name in ("sac", "ppo"):
+            # GaussianActor: shared.0, shared.2, ... 이 모두 hidden layer
+            dims, i = [], 0
+            while f"shared.{i * 2}.weight" in actor:
+                dims.append(actor[f"shared.{i * 2}.weight"].shape[0])
+                i += 1
+            if dims:
+                return dims
+
+        elif algo_name == "td3":
+            # DeterministicActor: net.net.0, .2, .4 ... 마지막은 출력층
+            dims, i = [], 0
+            while f"net.net.{i * 2}.weight" in actor:
+                dims.append(actor[f"net.net.{i * 2}.weight"].shape[0])
+                i += 1
+            if len(dims) > 1:
+                return dims[:-1]   # 마지막 = act_dim 출력층 제외
+
+    except Exception as e:
+        print(f"  [경고] 아키텍처 추론 실패 ({e}), 기본값 [256,256] 사용")
+
+    return [256, 256]
 EXP_PATTERN = re.compile(
     r"^(?P<algo>ppo|sac|td3)_(?P<env>[A-Za-z]+-v\d+)"
-    r"(?:_(?P<reward>[a-z_]+?))?(?P<dr>_dr)?_seed(?P<seed>\d+)$"
+    r"(?:_(?P<reward>[a-z][a-z0-9_-]+?))?"   # reward type 또는 hp_* 태그 (숫자·하이픈 허용)
+    r"(?P<dr>_dr)?_seed(?P<seed>\d+)$"
 )
 
 
@@ -51,8 +85,40 @@ def find_experiments(results_dir, filter_str=None):
 
 
 def evaluate_model(algo_name, model_path, env_id, n_episodes, seed):
-    env = gym.make(env_id)
-    algo = ALGO_MAP[algo_name](env.observation_space.shape[0], env.action_space.shape[0])
+    # 프로젝트 전용 NormalizeObservation 사용 — 학습 코드와 동일한 구현
+    env = ProjectNormalizeObs(gym.make(env_id))
+
+    # 학습 중 누적된 running stats 복원
+    stats_path = model_path.replace(".pt", "_obs_stats.npz")
+    if os.path.exists(stats_path):
+        stats = np.load(stats_path)
+        env.running_mean = stats["running_mean"].copy()
+        env.running_var  = stats["running_var"].copy()
+        env.count        = float(stats["count"][0])
+        print(f"  obs_stats 복원 완료 (count={env.count:.0f})")
+    else:
+        print(f"  [경고] obs_stats 없음 — 정규화 통계 초기화 상태로 평가")
+
+    # 평가 중 stats 업데이트 비활성화 — 복원한 통계가 오염되지 않도록 freeze
+    env._update_stats = lambda obs: None
+
+    obs_dim    = env.observation_space.shape[0]
+    act_dim    = env.action_space.shape[0]
+    max_action = float(env.env.action_space.high[0])   # 원본 env에서 읽기
+
+    # 체크포인트에서 실제 학습에 사용된 hidden_dims 추론
+    hidden_dims = infer_hidden_dims(model_path, algo_name)
+    print(f"  hidden_dims={hidden_dims}, max_action={max_action:.2f}")
+
+    if algo_name == "ppo":
+        algo = PPO(obs_dim, act_dim, hidden_dims=hidden_dims)
+    elif algo_name == "sac":
+        algo = SAC(obs_dim, act_dim, hidden_dims=hidden_dims, max_action=max_action)
+    elif algo_name == "td3":
+        algo = TD3(obs_dim, act_dim, hidden_dims=hidden_dims, max_action=max_action)
+    else:
+        raise ValueError(f"지원하지 않는 알고리즘: {algo_name}")
+
     algo.load(model_path)
 
     returns, lengths = [], []
@@ -97,10 +163,14 @@ def main():
         print(f"[{i}/{len(experiments)}] {exp['name']}")
         r = evaluate_model(exp["algo"], exp["model_path"], exp["env"],
                            args.episodes, exp["seed"] + 2000)
+        reward_val = exp.get("reward") or ""
+        is_hp = reward_val.startswith("hp_")
         row = {
             "experiment": exp["name"], "algorithm": exp["algo"].upper(),
             "environment": exp["env"], "seed": exp["seed"],
-            "reward_type": exp.get("reward") or "default",
+            "exp_type": "hp_tuning" if is_hp else ("reward_shaping" if reward_val else "baseline"),
+            "reward_type": "" if is_hp else (reward_val or "default"),
+            "hp_tag": reward_val[3:] if is_hp else "",   # hp_ 접두사 제거
             "domain_rand": exp["dr"],
             "mean_return": f"{r['mean_return']:.1f}",
             "std_return": f"{r['std_return']:.1f}",

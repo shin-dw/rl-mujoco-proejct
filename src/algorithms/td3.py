@@ -46,6 +46,7 @@ class TD3(BaseAlgorithm):
         max_action: float = 1.0,
         device: str = "auto",
         seed: int = 42,
+        gradient_steps: int = 1,
     ):
         super().__init__(obs_dim, act_dim, device, seed)
 
@@ -59,6 +60,7 @@ class TD3(BaseAlgorithm):
         self.target_noise = target_noise
         self.noise_clip = noise_clip
         self.max_action = max_action
+        self.gradient_steps = gradient_steps  # update() 내부에서 반복할 gradient step 수
 
         # --- 네트워크 초기화 ---
 
@@ -115,35 +117,49 @@ class TD3(BaseAlgorithm):
         """
         Replay Buffer에서 미니배치를 샘플링하여 업데이트합니다.
 
+        gradient_steps 회 반복 후 .item()을 마지막에 한 번만 호출하여
+        GPU-CPU 동기화 횟수를 최소화합니다.
+
         Returns:
             학습 메트릭
         """
-        self.update_count += 1
-        batch = self.buffer.sample(self.batch_size)
+        critic_loss_sum: torch.Tensor | None = None
+        actor_loss_sum:  torch.Tensor | None = None
+        actor_update_count = 0
 
-        # --- Critic 업데이트 (매 스텝) ---
-        critic_loss = self._update_critic(batch)
+        for _ in range(self.gradient_steps):
+            self.update_count += 1
+            batch = self.buffer.sample(self.batch_size)
 
-        # --- Actor 업데이트 (매 d번째 스텝) ---
-        actor_loss = 0.0
-        if self.update_count % self.policy_delay == 0:
-            actor_loss = self._update_actor(batch)
+            # --- Critic 업데이트 (매 스텝) ---
+            cl = self._update_critic(batch)
+            critic_loss_sum = cl if critic_loss_sum is None else critic_loss_sum + cl
 
-            # Target 네트워크 소프트 업데이트 (Actor 업데이트 시에만)
-            self._soft_update()
+            # --- Actor 업데이트 (매 policy_delay번째 스텝) ---
+            if self.update_count % self.policy_delay == 0:
+                al = self._update_actor(batch)
+                actor_loss_sum = al if actor_loss_sum is None else actor_loss_sum + al
+                actor_update_count += 1
 
+                # Target 네트워크 소프트 업데이트 (Actor 업데이트 시에만)
+                self._soft_update()
+
+        gs = self.gradient_steps
+        # .item() 호출은 여기서 한 번만 (GPU-CPU 동기화 최소화)
         return {
-            "loss/critic": critic_loss,
-            "loss/actor": actor_loss,
+            "loss/critic": (critic_loss_sum / gs).item(),
+            "loss/actor":  (actor_loss_sum / actor_update_count).item()
+                           if actor_update_count > 0 else 0.0,
         }
 
-    def _update_critic(self, batch) -> float:
+    def _update_critic(self, batch) -> torch.Tensor:
         """
         Twin Q-Network 업데이트.
 
         Target Policy Smoothing:
             a' = clip(π_target(s') + clip(ε, -c, c), -max, max)
             y = r + γ * min(Q1_target(s', a'), Q2_target(s', a'))
+        텐서를 반환 (.item()은 update()에서 한 번만 호출)
         """
         with torch.no_grad():
             # Target 행동 + smoothing noise
@@ -171,14 +187,15 @@ class TD3(BaseAlgorithm):
         # max_norm=0.5는 Q값이 커질수록 critic 업데이트를 과도하게 억제하여 발산 유발.
         self.critic_optimizer.step()
 
-        return critic_loss.item()
+        return critic_loss.detach()  # .item() 호출 없이 텐서 반환
 
-    def _update_actor(self, batch) -> float:
+    def _update_actor(self, batch) -> torch.Tensor:
         """
         결정적 정책 업데이트.
 
         max E[Q1(s, π(s))]  (Q1만 사용 — TD3 논문 원본)
         Actor 업데이트 시 critic parameter에 gradient가 흐르지 않도록 freeze.
+        텐서를 반환 (.item()은 update()에서 한 번만 호출)
         """
         action = self.actor(batch.observations)
 
@@ -198,7 +215,7 @@ class TD3(BaseAlgorithm):
         for param in self.critic.parameters():
             param.requires_grad_(True)
 
-        return actor_loss.item()
+        return actor_loss.detach()  # 텐서 반환
 
     def _soft_update(self):
         """Actor와 Critic Target 네트워크 소프트 업데이트."""

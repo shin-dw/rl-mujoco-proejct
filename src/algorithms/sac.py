@@ -46,6 +46,7 @@ class SAC(BaseAlgorithm):
         max_action: float = 1.0,
         device: str = "auto",
         seed: int = 42,
+        gradient_steps: int = 1,
     ):
         super().__init__(obs_dim, act_dim, device, seed)
         self.max_action = max_action
@@ -56,7 +57,8 @@ class SAC(BaseAlgorithm):
         self.batch_size = batch_size
         self.learning_starts = learning_starts
         self.auto_entropy = auto_entropy
-        
+        self.gradient_steps = gradient_steps  # update() 내부에서 반복할 gradient step 수
+
         # ⭐⭐⭐ [수정된 부분 1] Humanoid 환경에 맞게 보상 스케일 축소 파라미터 추가
         self.reward_scale = 0.1
 
@@ -132,52 +134,67 @@ class SAC(BaseAlgorithm):
         """
         Replay Buffer에서 미니배치를 샘플링하여 업데이트합니다.
 
+        gradient_steps 회 반복 후 .item()을 마지막에 한 번만 호출하여
+        GPU-CPU 동기화 횟수를 최소화합니다.
+
         Returns:
             학습 메트릭
         """
-        batch = self.buffer.sample(self.batch_size)
+        critic_loss_sum: torch.Tensor | None = None
+        actor_loss_sum: torch.Tensor | None  = None
+        alpha_loss_sum: torch.Tensor | None  = None
+        last_log_prob:  torch.Tensor | None  = None
 
-        # --- Critic 업데이트 ---
-        critic_loss = self._update_critic(batch)
+        for _ in range(self.gradient_steps):
+            batch = self.buffer.sample(self.batch_size)
 
-        # --- Actor 업데이트 ---
-        actor_loss, log_prob_mean = self._update_actor(batch)
+            # --- Critic 업데이트 ---
+            cl = self._update_critic(batch)
+            critic_loss_sum = cl if critic_loss_sum is None else critic_loss_sum + cl
 
-        # --- 엔트로피 계수 업데이트 ---
-        alpha_loss = 0.0
-        if self.auto_entropy:
-            alpha_loss = self._update_alpha(log_prob_mean)
+            # --- Actor 업데이트 ---
+            al, lp = self._update_actor(batch)
+            actor_loss_sum = al if actor_loss_sum is None else actor_loss_sum + al
+            last_log_prob = lp
 
-        # --- Target 네트워크 소프트 업데이트 ---
-        self._soft_update()
+            # --- 엔트로피 계수 업데이트 ---
+            if self.auto_entropy:
+                apl = self._update_alpha(lp)
+                alpha_loss_sum = apl if alpha_loss_sum is None else alpha_loss_sum + apl
 
+            # --- Target 네트워크 소프트 업데이트 ---
+            self._soft_update()
+
+        gs = self.gradient_steps
+        # .item() 호출은 여기서 한 번만 (GPU-CPU 동기화 최소화)
         return {
-            "loss/critic": critic_loss,
-            "loss/actor": actor_loss,
-            "loss/alpha": alpha_loss,
-            "info/alpha": self.alpha.item(),
-            "info/log_prob": log_prob_mean,
+            "loss/critic":    (critic_loss_sum / gs).item(),
+            "loss/actor":     (actor_loss_sum  / gs).item(),
+            "loss/alpha":     (alpha_loss_sum  / gs).item() if alpha_loss_sum is not None else 0.0,
+            "info/alpha":     self.alpha.item(),
+            "info/log_prob":  last_log_prob.item(),
         }
 
-    def _update_critic(self, batch) -> float:
+    def _update_critic(self, batch) -> torch.Tensor:
         """
         Twin Q-Network 업데이트.
 
         y = r + γ * (min(Q1_target, Q2_target) - α * log π(a'|s'))
+        텐서를 반환 (.item()은 update()에서 한 번만 호출)
         """
         with torch.no_grad():
             # 다음 행동 샘플링 (현재 정책에서)
             next_action, next_log_prob = self.actor.rsample_with_log_prob(
                 batch.next_observations
             )
-            
+
             # ⭐⭐⭐ [수정된 부분 2] Log Prob이 음의 무한대로 발산하여 Q값이 폭발하는 것 방지
             next_log_prob = torch.clamp(next_log_prob, min=-20.0, max=2.0)
-            
+
             # Target Q 값 계산
             next_q1, next_q2 = self.critic_target(batch.next_observations, next_action)
             next_q = torch.min(next_q1, next_q2) - self.alpha * next_log_prob
-            
+
             # ⭐⭐⭐ [수정된 부분 3] 보상에 스케일을 곱하여 거대한 보상 단위 축소
             scaled_rewards = batch.rewards * self.reward_scale
             target_q = scaled_rewards + self.gamma * (1.0 - batch.dones) * next_q
@@ -190,12 +207,12 @@ class SAC(BaseAlgorithm):
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        
+
         # ⭐⭐⭐ [수정된 부분 4] Critic Gradient Clipping을 40.0에서 1.0으로 복구하여 급격한 파라미터 붕괴 방지
         nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
 
-        return critic_loss.item()
+        return critic_loss.detach()  # .item() 호출 없이 텐서 반환
 
     def _update_actor(self, batch) -> tuple:
         """
@@ -204,9 +221,10 @@ class SAC(BaseAlgorithm):
         max E[min(Q1,Q2)(s, π(s)) - α * log π(a|s)]
         SAC 논문(Haarnoja et al. 2018)에 따라 min(Q1,Q2)를 사용하여 과대추정 방지.
         Actor 업데이트 시 critic parameter에 gradient가 흐르지 않도록 freeze.
+        텐서 튜플을 반환 (.item()은 update()에서 한 번만 호출)
         """
         action, log_prob = self.actor.rsample_with_log_prob(batch.observations)
-        
+
         # ⭐⭐⭐ [수정된 부분 5] Actor 업데이트 시에도 Log Prob 발산 방지 적용
         log_prob = torch.clamp(log_prob, min=-20.0, max=2.0)
 
@@ -226,12 +244,15 @@ class SAC(BaseAlgorithm):
         for param in self.critic.parameters():
             param.requires_grad_(True)
 
-        return actor_loss.item(), log_prob.mean().item()
+        return actor_loss.detach(), log_prob.mean().detach()  # 텐서 반환
 
-    def _update_alpha(self, log_prob_mean: float) -> float:
-        """엔트로피 계수 자동 조절."""
-        log_prob_tensor = torch.tensor(log_prob_mean, device=self.device)
-        alpha_loss = -(self.log_alpha * (log_prob_tensor + self.target_entropy).detach())
+    def _update_alpha(self, log_prob: torch.Tensor) -> torch.Tensor:
+        """엔트로피 계수 자동 조절.
+
+        log_prob: _update_actor()가 반환한 텐서 (float 변환 없이 직접 사용)
+        텐서를 반환 (.item()은 update()에서 한 번만 호출)
+        """
+        alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach())
 
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
@@ -240,7 +261,7 @@ class SAC(BaseAlgorithm):
         # 이미 넓게 풀어둔 부분 유지
         self.log_alpha.data.clamp_(min=-20.0, max=5.0)
 
-        return alpha_loss.item()
+        return alpha_loss.detach()  # 텐서 반환
 
     def _soft_update(self):
         """Target 네트워크 소프트 업데이트 (Polyak averaging)."""

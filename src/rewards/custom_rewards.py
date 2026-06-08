@@ -108,24 +108,34 @@ def humanoid_run_forward(
     # 1. 전진 속도 보너스 (그대로 유지)
     velocity_bonus = 3.0 * max(x_vel, 0.0)
 
-    # 2. [수정] 후방 기울임(Leaning Backward) 철퇴 ────────────────────────
-    # obs[1]~[4]는 몸통의 쿼터니언 (w, x, y, z)
+    # ── 2. [수정] 전후방, 좌우, 그리고 "비틀림(Yaw)" 완벽 통제 ────────────────────────
     w = float(next_obs[1])
     x = float(next_obs[2])
     y = float(next_obs[3])
     z = float(next_obs[4])
 
-    # 몸통의 로컬 Up(정수리 방향) 벡터가 전진 방향(X축)으로 얼마나 기울었는지 계산
-    # ux > 0: 앞으로 숙임 (육상 선수 폼)
-    # ux < 0: 뒤로 누움 (매트릭스 회피 폼)
-    ux = 2.0 * (x * z + w * y)
+    # 로컬 축 벡터 계산
+    ux = 2.0 * (x * z + w * y)  # 전후 기울기 (Pitch)
+    uy = 2.0 * (y * z - w * x)  # 좌우 기울기 (Roll)
+    
+    # [새로 추가된 수식] 몸통의 정면(Forward) 방향이 Y축으로 얼마나 치우쳤는지 계산
+    # 완벽하게 정면(X축)을 보고 있다면 이 값은 0이 됩니다.
+    yaw_twist = 2.0 * (x * y + w * z) 
 
     posture_penalty = 0.0
-    if ux < 0:
-        # 뒤로 눕는 자세에 대해 각도에 비례한 치명적인 페널티 부여
-        posture_penalty = -10.0 * abs(ux)
     
-    # 너무 극단적으로 앞으로 고꾸라지는 것만 방지 (약 60도 이상)
+    # A. 뒤로 눕는 자세 철퇴
+    if ux < 0:
+        posture_penalty -= 10.0 * abs(ux)
+        
+    # B. 좌우 비틀림(기울기) 철퇴
+    posture_penalty -= 5.0 * abs(uy)
+    
+    # C. ★ [추가] 골반/상체 비틀림 철퇴 (짝짝이 팔 스윙 방지) ★
+    # 몸통을 정면에서 옆으로 비트는 순간 강력한 감점을 줍니다.
+    posture_penalty -= 5.0 * abs(yaw_twist)
+    
+    # D. 너무 극단적으로 앞으로 고꾸라지는 것 방지
     torso_upright = 1.0 - 2.0 * (x ** 2 + y ** 2)
     if torso_upright < 0.5:
         posture_penalty -= 2.0
@@ -144,8 +154,10 @@ def humanoid_run_forward(
 
     # 4. 무릎 및 팔 스윙 (보조 역할로 유지)
     knee_usage_bonus = 0.5 * (abs(clipped[6]) + abs(clipped[10]))
-    if len(clipped) > 16:
-        arm_swing_bonus = -0.5 * (clipped[15] * clipped[5] + clipped[16] * clipped[9])
+    if len(clipped) > 14:
+        # 기존 0.5에서 3.0으로 계수를 확 끌어올려 에너지 소모(control cost)를 
+        # 감수하고서라도 무조건 팔을 힘차게 흔들도록 강제합니다.
+        arm_swing_bonus = -3.0 * (clipped[11] * clipped[5] + clipped[14] * clipped[9])
     else:
         arm_swing_bonus = 0.0
 

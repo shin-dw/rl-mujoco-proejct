@@ -69,13 +69,15 @@ def create_algorithm(name, obs_dim, act_dim, config, device="auto", seed=42, max
                     c.get("lr_alpha", 3e-4), gamma, c.get("tau", 0.005), c.get("batch_size", 256),
                     c.get("buffer_size", 1000000), c.get("learning_starts", 10000),
                     c.get("auto_entropy", True), c.get("init_alpha", 0.2),
-                    c.get("target_entropy", None), max_action, device, seed)
+                    c.get("target_entropy", None), max_action, device, seed,
+                    gradient_steps=c.get("gradient_steps", 1))
     elif name == "td3":
         return TD3(obs_dim, act_dim, h, act, c.get("lr_actor", 3e-4), c.get("lr_critic", 3e-4),
                     gamma, c.get("tau", 0.005), c.get("batch_size", 256),
                     c.get("buffer_size", 1000000), c.get("learning_starts", 10000),
                     c.get("policy_delay", 2), c.get("exploration_noise", 0.1),
-                    c.get("target_noise", 0.2), c.get("noise_clip", 0.5), max_action, device, seed)
+                    c.get("target_noise", 0.2), c.get("noise_clip", 0.5), max_action, device, seed,
+                    gradient_steps=c.get("gradient_steps", 1))
     raise ValueError(f"지원하지 않는 알고리즘: {name}")
 
 
@@ -149,9 +151,18 @@ def train_ppo(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, sa
     save_with_obs_stats(algo, env, os.path.join(save_dir, "models", "model_final.pt"))
 
 
-def train_offpolicy(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, save_dir):
+def train_offpolicy(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, save_dir,
+                    update_freq: int = 1):
+    """
+    Off-policy 학습 루프.
+
+    update_freq  : 몇 스텝마다 한 번 업데이트할지 (기본 1 = 매 스텝)
+    gradient_steps는 algo 생성자에서 설정되어 algo.update() 내부에서 처리됨.
+    → Python 루프 오버헤드 최소화 + GPU-CPU 동기화(.item())를 gradient_steps에 무관하게 3~4회로 고정
+    """
     obs, _ = env.reset()
     ep_ret, ep_len = 0.0, 0
+    last_metrics: dict = {}
 
     for step in range(1, total_steps + 1):
         if step < algo.learning_starts:
@@ -171,9 +182,10 @@ def train_offpolicy(algo, env, evaluator, logger, total_steps, eval_freq, log_fr
             obs, _ = env.reset()
             ep_ret, ep_len = 0.0, 0
 
-        if step >= algo.learning_starts:
-            metrics = algo.update()
-            for k, v in metrics.items():
+        # update_freq 스텝마다 1회 업데이트 (gradient_steps는 algo 내부에서 처리)
+        if step >= algo.learning_starts and step % update_freq == 0:
+            last_metrics = algo.update()
+            for k, v in last_metrics.items():
                 logger.log_scalar(k, v, step)
 
         if step % log_freq == 0:
@@ -252,7 +264,12 @@ def main():
         if args.algo == "ppo":
             train_ppo(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, save_dir)
         else:
-            train_offpolicy(algo, env, evaluator, logger, total_steps, eval_freq, log_freq, save_dir)
+            ac = config.get(args.algo, {})
+            update_freq    = ac.get("update_freq", 1)
+            gradient_steps = ac.get("gradient_steps", 1)
+            print(f"  update_freq={update_freq} | gradient_steps={gradient_steps} (algo 내부 처리)")
+            train_offpolicy(algo, env, evaluator, logger, total_steps, eval_freq, log_freq,
+                            save_dir, update_freq=update_freq)
     finally:
         logger.close()
         evaluator.close()

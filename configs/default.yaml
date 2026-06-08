@@ -74,8 +74,8 @@ td3:
   exploration_noise: 0.1 # 탐색 노이즈 (가우시안 표준편차)
   target_noise: 0.2 # Target policy smoothing 노이즈
   noise_clip: 0.5 # Target 노이즈 클리핑 범위
-  update_freq: 1
-  gradient_steps: 8
+  update_freq: 4
+  gradient_steps: 1
   normalize_reward: false # running normalization은 replay buffer와 비호환 → 사용 안 함
   reward_scale: 10.0 # 고정 스케일링 (reward/10.0): Q_max ≈ 60, Huber 이차 영역 유지
 
