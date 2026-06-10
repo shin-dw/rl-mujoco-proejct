@@ -1,152 +1,357 @@
-# 🤖 MuJoCo 연속 제어 환경에서의 강화학습 알고리즘 비교 연구
+# 🤖 MuJoCo Humanoid-v5 강화학습 알고리즘 비교 연구
 
-> **서강대학교 강화학습 프로젝트**
-> 마감: 2026년 6월 12일 (금)
+> **서강대학교 강화학습의 기초 프로젝트** | 마감: 2026년 6월 12일 (금)
 
-> 📌 **README** · [프로젝트 기획서](project_proposal.md) · [로드맵](roadmap.md)
+MuJoCo **Humanoid-v5** 환경에서 **PPO, SAC, TD3** 세 알고리즘을 직접 구현하고,  
+Reward Shaping 및 Hyperparameter 튜닝 실험을 통해 체계적으로 성능을 비교·분석합니다.
 
-MuJoCo 물리 시뮬레이션 기반 연속 제어 환경에서 **PPO, SAC, TD3** 알고리즘을 직접 구현하고, Reward Shaping 및 Domain Randomization 실험을 통해 체계적으로 비교·분석합니다.
+---
 
-## 📚 문서 안내
+## 🏆 최종 실험 결과 요약
 
-원하시는 목적에 따라 아래의 문서를 확인해 주세요.
-*   [**실행 방법 및 환경 설정 (`README.md`)**](./README.md) (현재 문서): 코드 실행 및 결과 확인 방법
-*   [**프로젝트 기획서 (`project_proposal.md`)**](./project_proposal.md): 연구 목표, 실험 설계 및 세부 기획 내용
-*   [**실행 로드맵 (`roadmap.md`)**](./roadmap.md) (내부용): 팀원 주차별 액션 플랜 및 실험 팁
+> 모든 실험은 **Humanoid-v5** 환경, **seed 42**, **20M 학습 스텝** 기준으로 수행되었습니다.
+
+### 알고리즘별 Eval Return (10 에피소드 평균)
+
+
+| 알고리즘                  | Mean      | Std   | Peak      | 후반 20% 평균 | 비고                |
+| --------------------- | --------- | ----- | --------- | --------- | ----------------- |
+| **PPO + run_forward** | **7,251** | 2,076 | **9,378** | **6,777** | 최고 성능             |
+| TD3 Baseline          | 6,164     | 1,917 | 7,429     | 5,403     | 학습 후반 불안정         |
+| PPO Baseline          | 4,176     | 1,259 | 5,507     | 4,966     | 가장 안정적            |
+| SAC Baseline          | 2,415     | 1,577 | 4,998     | 3,044     | reward scaling 이슈 |
+
+
+### 핵심 발견
+
+- **Reward Shaping 효과**: PPO Baseline(4,176) → PPO run_forward(7,251), **+73.6% 성능 향상**
+- **알고리즘 안정성**: PPO가 가장 안정적 (Std 최소), TD3는 후반부 성능 저하 관찰
+- **SAC 한계**: reward_scale 이중 적용(×0.01 효과)으로 학습 신호 약화, 잠재 성능 미달
+
+---
 
 ## 📁 프로젝트 구조
 
 ```
-rl/
+rl-mujoco-proejct/
 ├── configs/
-│   └── default.yaml              # Hyperparameter 설정
+│   ├── default.yaml              # 기본 하이퍼파라미터
+│   └── hp_tuning/                # HP 튜닝용 yaml 파일
+│       ├── ppo_clip01.yaml
+│       ├── ppo_clip03.yaml
+│       ├── ppo_lr1e-3.yaml
+│       ├── ppo_lr1e-4.yaml
+│       ├── sac_bs128.yaml
+│       ├── sac_bs512.yaml
+│       ├── sac_lra1e-3.yaml
+│       ├── sac_lra1e-4.yaml
+│       ├── td3_delay1.yaml
+│       ├── td3_delay4.yaml
+│       ├── td3_noise005.yaml
+│       └── td3_noise02.yaml
 ├── src/
-│   ├── common/                   # 공통 모듈
-│   │   ├── networks.py           # 신경망 (Actor, Critic, MLP)
-│   │   ├── buffer.py             # 경험 버퍼 (Replay, Rollout)
-│   │   ├── env_wrapper.py        # 환경 래퍼 (정규화, DR, 커스텀 리워드)
-│   │   ├── logger.py             # 학습 로깅 (CSV, TensorBoard)
-│   │   └── evaluator.py          # 정책 평가
-│   ├── algorithms/               # 알고리즘
-│   │   ├── base.py               # 추상 기반 클래스
-│   │   ├── ppo.py                # PPO (Proximal Policy Optimization)
-│   │   ├── sac.py                # SAC (Soft Actor-Critic)
-│   │   └── td3.py                # TD3 (Twin Delayed DDPG)
-│   ├── rewards/                  # 커스텀 리워드
-│   │   └── custom_rewards.py     # 환경별 리워드 함수 레지스트리
-│   ├── train.py                  # 통합 학습 스크립트
-│   └── evaluate.py               # 평가 및 시각화 스크립트
+│   ├── common/
+│   │   ├── networks.py           # MLP 기반 Actor / Critic 네트워크
+│   │   ├── buffer.py             # RolloutBuffer (PPO) / ReplayBuffer (SAC, TD3)
+│   │   ├── env_wrapper.py        # NormalizeObservation / ScaleReward / DR 래퍼
+│   │   ├── logger.py             # CSV + TensorBoard 로깅
+│   │   └── evaluator.py          # 학습 중 정책 평가
+│   ├── algorithms/
+│   │   ├── base.py               # BaseAlgorithm 추상 클래스
+│   │   ├── ppo.py                # PPO (Clipped Surrogate + GAE)
+│   │   ├── sac.py                # SAC (Max-Entropy + Twin-Q + Auto-α)
+│   │   └── td3.py                # TD3 (Delayed Update + Target Smoothing)
+│   ├── rewards/
+│   │   └── custom_rewards.py     # Humanoid-v5 전용 커스텀 리워드
+│   ├── train.py                  # 학습 진입점
+│   └── evaluate.py               # 단일 모델 평가 / 렌더링
+├── scripts/
+│   ├── run_experiments.py        # 전체 실험 자동화 (baseline → reward → hp → best)
+│   ├── eval_all.py               # 모든 실험 일괄 평가 → summary.csv
+│   ├── plot_comparison.py        # 4개 알고리즘 비교 그래프 (comparison_main.png)
+│   ├── plot_individual.py        # 실험별 개별 그래프 생성
+│   ├── plot_results.py           # 종합 결과 그래프
+│   ├── record_videos.py          # 에피소드 영상 녹화 (MP4)
+│   └── generate_report.py        # 실험 보고서 자동 생성 (.docx)
 ├── results/                      # 실험 결과 (자동 생성, Git 제외)
-├── project_proposal.md           # 프로젝트 기획서
-├── .gitignore
-├── requirements.txt              # Python 의존성
+│   ├── {algo}_{env}_{tag}_seed{seed}/
+│   │   ├── logs/
+│   │   │   ├── progress.csv      # 학습 메트릭 (step, episode/return, eval/mean_return, ...)
+│   │   │   └── tensorboard/      # TensorBoard 이벤트
+│   │   └── models/
+│   │       ├── model_{step}.pt   # 체크포인트
+│   │       └── model_final.pt    # 최종 모델
+│   ├── eval/
+│   │   └── summary.csv           # eval_all.py 일괄 평가 결과
+│   ├── plots/                    # 그래프 이미지
+│   └── videos/                   # 에피소드 녹화 영상
+├── report/
+│   └── RL 과제 보고서_실험결과.pptx
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
 └── README.md
 ```
 
+---
+
 ## 🚀 빠른 시작
-
-### 0. 필수 조건
-
-- **Python 3.13 ~ 3.14** (3.15 pre-release는 비권장)
-- GPU가 있으면 학습이 빨라지지만, CPU만으로도 충분히 실행 가능
 
 ### 1. 환경 설정
 
 ```bash
-# 가상 환경 생성 (권장)
+# 가상 환경 생성 및 활성화
 python -m venv venv
 venv\Scripts\activate             # Windows
 # source venv/bin/activate        # Linux/Mac
 
 # 의존성 설치
 pip install -r requirements.txt
+
+# GPU 사용 시 (CUDA 12.4 기준 — 권장)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
 ```
 
-### 2. 학습 실행
+**시스템 요구사항**
+
+- Python 3.10 ~ 3.12
+- MuJoCo 3.x (gymnasium[mujoco] 설치 시 자동 포함)
+- GPU: CUDA 지원 GPU 권장 (RTX 4060 기준 20M 스텝 ≈ 수 시간)
+
+### 2. 기본 학습 실행
 
 ```bash
-# PPO로 HalfCheetah 학습 (기본)
-python -m src.train --algo ppo --env HalfCheetah-v5 --seed 42
+# PPO Baseline — Humanoid-v5 (기본 seed 42)
+python -m src.train --algo ppo --env Humanoid-v5 --seed 42 --tensorboard
 
-# SAC로 Ant 학습 (커스텀 리워드 적용)
-python -m src.train --algo sac --env Ant-v5 --seed 42 --reward-type energy_efficient
+# SAC Baseline
+python -m src.train --algo sac --env Humanoid-v5 --seed 42 --tensorboard
 
-# TD3로 HalfCheetah 학습 (Domain Randomization 적용)
-python -m src.train --algo td3 --env HalfCheetah-v5 --seed 42 --domain-rand
+# TD3 Baseline
+python -m src.train --algo td3 --env Humanoid-v5 --seed 42 --tensorboard
 
-# TensorBoard 로깅 활성화 (학습 그래프 실시간 확인)
-python -m src.train --algo sac --env HalfCheetah-v5 --seed 42 --tensorboard
+# PPO + run_forward Reward Shaping (최고 성능 조합)
+python -m src.train --algo ppo --env Humanoid-v5 --seed 42 \
+    --reward-type run_forward --tensorboard
 ```
 
-#### 주요 옵션 설명
+#### 주요 옵션
 
-| 옵션 | 설명 | 예시 |
-|---|---|---|
-| `--algo` | 사용할 알고리즘 (필수) | `ppo`, `sac`, `td3` |
-| `--env` | MuJoCo 환경 | `HalfCheetah-v5`, `Ant-v5`, `Humanoid-v5` |
-| `--seed` | 랜덤 시드 (재현성 보장) | `42`, `77`, `123` |
-| `--total-steps` | 총 학습 스텝 수 | `1000000` (기본: 환경별 자동 설정) |
-| `--reward-type` | 커스텀 리워드 함수 | `energy_efficient`, `stability` |
-| `--domain-rand` | Domain Randomization 활성화 | (플래그, 값 불필요) |
-| `--tensorboard` | TensorBoard 로깅 활성화 | (플래그, 값 불필요) |
 
-### 3. 모델 평가 및 시각화
+| 옵션              | 설명                 | 예시                                            |
+| --------------- | ------------------ | --------------------------------------------- |
+| `--algo`        | 알고리즘 선택 (필수)       | `ppo`, `sac`, `td3`                           |
+| `--env`         | MuJoCo 환경          | `Humanoid-v5`                                 |
+| `--seed`        | 랜덤 시드              | `42`                                          |
+| `--total-steps` | 총 학습 스텝            | `20000000`                                    |
+| `--reward-type` | 커스텀 리워드 함수         | `run_forward`, `balanced_walk`, `stable_gait` |
+| `--config`      | 설정 파일 경로           | `configs/hp_tuning/ppo_clip01.yaml`           |
+| `--tensorboard` | TensorBoard 로깅 활성화 | (플래그)                                         |
 
-```bash
-# 학습된 모델 평가 (숫자 결과만 확인)
-python -m src.evaluate --model results\ppo_HalfCheetah-v5_seed42\models\model_final.pt --algo ppo --env HalfCheetah-v5
 
-# 로봇이 걷는 모습을 화면에 렌더링 (MuJoCo 시뮬레이션 창 표시)
-python -m src.evaluate --model results\ppo_HalfCheetah-v5_seed42\models\model_final.pt --algo ppo --env HalfCheetah-v5 --render --episodes 3
-```
-
-### 4. TensorBoard로 학습 그래프 확인
+### 3. TensorBoard로 학습 모니터링
 
 ```bash
+# 단일 실험
+tensorboard --logdir results/ppo_Humanoid-v5_seed42/logs/tensorboard
+
+# 전체 실험 비교
 tensorboard --logdir results/
-# 브라우저에서 http://localhost:6006 접속
+# → 브라우저에서 http://localhost:6006 접속
 ```
 
-## 🧪 실험 구성
+### 4. 학습된 모델 평가
+
+```bash
+# 숫자 결과만 출력
+python -m src.evaluate \
+    --model results/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --algo ppo --env Humanoid-v5
+
+# 시뮬레이션 창에서 렌더링
+python -m src.evaluate \
+    --model results/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --algo ppo --env Humanoid-v5 --render --episodes 3
+```
+
+### 5. 전체 실험 자동화
+
+```bash
+# 모든 단계 순서대로 실행 (baseline → reward shaping → HP tuning → best)
+python scripts/run_experiments.py
+
+# 단계별 개별 실행
+python scripts/run_experiments.py --phase baseline   # 3개 알고리즘 기본 학습
+python scripts/run_experiments.py --phase reward     # Reward Shaping 실험
+python scripts/run_experiments.py --phase hp         # HP 튜닝 실험
+
+# 최적 조합 탐색 (사전에 eval_all.py 실행 필수)
+python scripts/eval_all.py
+python scripts/run_experiments.py --phase best
+```
+
+---
+
+## 🧪 실험 설계
 
 ### 대상 환경
 
-| 환경 | State 차원 | Action 차원 | 난이도 | 권장 학습 스텝 |
-|---|---|---|---|---|
-| HalfCheetah-v5 | 17 | 6 | ⭐⭐ | 1,000,000 |
-| Ant-v5 | 27 | 8 | ⭐⭐⭐ | 2,000,000 |
-| Humanoid-v5 | 376 | 17 | ⭐⭐⭐⭐ | 3,000,000 |
 
-### 알고리즘
+| 환경              | State 차원 | Action 차원 | Action 범위 | 학습 스텝      |
+| --------------- | -------- | --------- | --------- | ---------- |
+| **Humanoid-v5** | 376      | 17        | ±0.4      | 20,000,000 |
 
-- **PPO**: On-policy, Clipped Surrogate + GAE
-- **SAC**: Off-policy, Maximum Entropy + Twin Q + Auto α
-- **TD3**: Off-policy, Deterministic Policy + Delayed Update + Twin Q
 
-### 실험 종류
+> MuJoCo 인간형 로봇의 직립 보행 학습. 가장 고차원 연속 제어 환경.
 
-1. **기본 성능 비교**: 3 알고리즘 × 3 환경 × 3+ 시드
-2. **Reward Shaping**: 커스텀 리워드 함수별 학습 효율 비교
-3. **Domain Randomization**: 물리 파라미터 무작위화 후 로버스트니스 평가
+### 구현된 알고리즘
 
-### 사용 가능한 커스텀 리워드
 
-| 환경 | 리워드 타입 | 설명 |
-|---|---|---|
-| HalfCheetah-v5 | `energy_efficient` | 에너지 효율 극대화 |
-| HalfCheetah-v5 | `stability` | 자세 안정성 중심 |
-| Ant-v5 | `directional` | 직진성 보상 |
-| Ant-v5 | `energy_efficient` | 에너지 효율 극대화 |
-| Humanoid-v5 | `balanced_walk` | 균형 잡힌 보행 |
-| Humanoid-v5 | `stable_gait` | 부드러운 걸음걸이 |
+| 알고리즘    | 방식         | 버퍼                  | 특징                                                           |
+| ------- | ---------- | ------------------- | ------------------------------------------------------------ |
+| **PPO** | On-policy  | RolloutBuffer (GAE) | clip_ratio=0.1, lr annealing, state-independent std          |
+| **SAC** | Off-policy | ReplayBuffer        | Twin-Q, Auto-α, target_entropy=-8.5                          |
+| **TD3** | Off-policy | ReplayBuffer        | Delayed update (×2), target smoothing, exploration noise=0.1 |
+
+
+### 커스텀 리워드 (Humanoid-v5 전용)
+
+
+| 리워드 타입          | 설명                                                                        |
+| --------------- | ------------------------------------------------------------------------- |
+| `run_forward`   | velocity_bonus(×3.0) + 자세 페널티 + 엉덩이 교번 보너스 + 무릎/팔 스윙 + y축 직진 + 제자리 걸음 페널티 |
+| `balanced_walk` | 기본 reward + 높이 유지 + 에너지 절약 + y축 직진 + 좌우 고관절 대칭성                           |
+| `stable_gait`   | 연속 행동 변화량 페널티 (부드러운 걸음걸이)                                                 |
+
+
+---
+
+## 📊 결과 분석 및 시각화
+
+### 그래프 생성
+
+```bash
+# 4개 알고리즘 비교 그래프 (comparison_main.png, comparison_bar.png)
+python scripts/plot_comparison.py
+
+# 실험별 개별 상세 그래프 (progress.csv 기반)
+python scripts/plot_individual.py
+
+# 전체 실험 종합 그래프
+python scripts/plot_results.py --env Humanoid-v5
+
+# 특정 알고리즘만 필터링
+python scripts/plot_individual.py --filter ppo
+python scripts/plot_individual.py --filter hp_clip
+```
+
+저장 위치: `results/plots/`
+
+### 전체 평가 실행
+
+```bash
+# 모든 학습된 모델을 일괄 평가 → results/eval/summary.csv 생성
+python scripts/eval_all.py
+```
+
+### 에피소드 영상 녹화
+
+```bash
+# 4개 주요 실험 녹화 (각 10 에피소드)
+python scripts/record_videos.py
+
+# 에피소드 수 조정
+python scripts/record_videos.py --episodes 3
+
+# 특정 알고리즘만
+python scripts/record_videos.py --filter ppo
+
+# 저장 위치: results/videos/{실험명}/ep01.mp4, ep02.mp4, ...
+```
+
+> **사전 설치 필요**: `pip install imageio imageio-ffmpeg`
+
+---
+
+## ⚙️ 주요 하이퍼파라미터 (default.yaml)
+
+### PPO
+
+
+| 파라미터                 | 값    | 설명         |
+| -------------------- | ---- | ---------- |
+| lr_actor / lr_critic | 3e-4 | 학습률        |
+| n_steps              | 2048 | 롤아웃 스텝 수   |
+| batch_size           | 512  | 미니배치 크기    |
+| n_epochs             | 10   | 업데이트 반복 횟수 |
+| clip_ratio           | 0.1  | PPO 클리핑 범위 |
+| gae_lambda           | 0.95 | GAE λ      |
+| lr_annealing         | true | 학습률 선형 감소  |
+
+
+### SAC
+
+
+| 파라미터           | 값    | 설명                               |
+| -------------- | ---- | -------------------------------- |
+| lr_actor       | 3e-4 | Actor 학습률                        |
+| lr_critic      | 1e-4 | Critic 학습률                       |
+| batch_size     | 256  | 배치 크기                            |
+| target_entropy | -8.5 | Humanoid-v5 최적값 (-17은 std 붕괴 유발) |
+| reward_scale   | 10.0 | 리워드 스케일링                         |
+| auto_entropy   | true | α 자동 조절                          |
+
+
+### TD3
+
+
+| 파라미터              | 값    | 설명              |
+| ----------------- | ---- | --------------- |
+| lr_actor          | 3e-4 | Actor 학습률       |
+| lr_critic         | 1e-4 | Critic 학습률      |
+| batch_size        | 1024 | 배치 크기           |
+| policy_delay      | 2    | 정책 업데이트 지연 주기   |
+| exploration_noise | 0.1  | 탐색 노이즈 (가우시안 σ) |
+| reward_scale      | 10.0 | 리워드 스케일링        |
+
+
+---
+
+## 🔍 실험 범위 및 한계
+
+### 실제 수행된 실험
+
+- ✅ Humanoid-v5 환경, seed 42, 20M 스텝
+- ✅ PPO / SAC / TD3 Baseline 학습
+- ✅ PPO run_forward Reward Shaping (+73.6% 성능 향상)
+- ✅ 12가지 HP 튜닝 실험 (알고리즘별 4가지)
+- ✅ 알고리즘 간 Eval Return 비교 분석
+
+---
+
+## 🐳 Docker 실행 (선택)
+
+```bash
+# Docker 이미지 빌드 및 실행
+docker-compose up --build
+
+# 특정 실험만 실행
+docker-compose run rl python -m src.train --algo ppo --env Humanoid-v5 --seed 42
+```
+
+---
 
 ## 👥 팀원
 
-| 이름 | 학번 | 담당 |
-|---|---|---|
-| 동우 | - | 환경/실험 인프라 + Domain Randomization + 시각화 자동화 |
-| 희승 | - | PPO + TD3 구현 + Hyperparameter 실험 + Reward Shaping |
-| 민설 | - | SAC 구현 + 분석/보고서 |
+
+| 이름          | 담당                                            |
+| ----------- | --------------------------------------------- |
+| 신동우(A74041) | 환경/실험 인프라, 시각화 자동화                            |
+| 이희승(A74048) | PPO + TD3 구현, HP 튜닝, Reward Shaping 실험, 결과 분석 |
+| 박민설(A74038) | SAC 구현, 분석/보고서                                |
+
+
+---
 
 ## 📝 라이선스
 
