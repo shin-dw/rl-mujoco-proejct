@@ -183,7 +183,7 @@ def plot_one(csv_path, info, output_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results-dir", default="results")
+    parser.add_argument("--results-dir", default="results/logs")
     parser.add_argument("--output", default="results/plots/individual")
     parser.add_argument("--filter", default=None, help="실험 이름 필터 (예: sac, hp, baseline)")
     args = parser.parse_args()

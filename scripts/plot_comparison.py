@@ -69,7 +69,7 @@ EXPS = [
     ),
 ]
 
-RESULTS_DIR = "results"
+RESULTS_DIR = "results/logs"
 OUTPUT_DIR  = "results/plots"
 SW          = 30          # smoothing window
 

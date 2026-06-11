@@ -144,14 +144,14 @@ def evaluate_model(algo_name, model_path, env_id, n_episodes, seed):
 
 def main():
     parser = argparse.ArgumentParser(description="일괄 평가")
-    parser.add_argument("--results-dir", default="results")
+    parser.add_argument("--results-dir", default="results/models")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--filter", default=None)
     parser.add_argument("--output", default=None)
     args = parser.parse_args()
-    output = args.output or os.path.join(args.results_dir, "eval", "summary.csv")
+    output = args.output or os.path.join("results", "eval", "summary.csv")
 
-    print(f"\n{'='*60}\n  📊 일괄 평가 시작 | 에피소드: {args.episodes}\n{'='*60}")
+    print(f"\n{'='*60}\n  일괄 평가 시작 | 에피소드: {args.episodes}\n{'='*60}")
     experiments = find_experiments(args.results_dir, args.filter)
     if not experiments:
         print("[!] 평가할 실험이 없습니다. 팀원 B, C가 학습 완료 후 다시 실행하세요.")
@@ -187,7 +187,7 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\n✅ 평가 완료! 결과: {output}")
+    print(f"\n평가 완료! 결과: {output}")
     print(f"\n{'알고리즘':<8} {'환경':<18} {'시드':<6} {'Mean Return':<14} {'± Std'}")
     print("-" * 58)
     for r in rows:

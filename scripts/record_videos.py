@@ -194,7 +194,7 @@ def record_experiment(exp: dict, results_dir: str, output_dir: str,
 
 def main():
     parser = argparse.ArgumentParser(description="4개 실험 에피소드 녹화")
-    parser.add_argument("--results-dir", default="results",
+    parser.add_argument("--results-dir", default="results/models",
                         help="실험 결과 루트 디렉터리")
     parser.add_argument("--output",      default="results/videos",
                         help="영상 저장 디렉터리")

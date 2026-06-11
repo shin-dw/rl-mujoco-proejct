@@ -120,14 +120,14 @@ def plot_training_curves(results_dir, output_dir, env_filter=None):
         path = os.path.join(output_dir, f"curve_{env_name}.png")
         plt.savefig(path)
         plt.close()
-        print(f"  ✅ 학습 곡선: {path}")
+        print(f"학습 곡선: {path}")
 
 
 # ─── 2. 최종 성능 바 차트 ───
 
 def plot_performance_bar(results_dir, output_dir):
     """summary.csv를 읽어 알고리즘별 최종 성능 바 차트를 생성합니다."""
-    summary_path = os.path.join(results_dir, "eval", "summary.csv")
+    summary_path = os.path.join("results", "eval", "summary.csv")
     if not os.path.exists(summary_path):
         print(f"  [바 차트] summary.csv가 없습니다. 먼저 eval_all.py를 실행하세요.")
         return
@@ -171,7 +171,7 @@ def plot_performance_bar(results_dir, output_dir):
     path = os.path.join(output_dir, "performance_bar.png")
     plt.savefig(path)
     plt.close()
-    print(f"  ✅ 성능 바 차트: {path}")
+    print(f"성능 바 차트: {path}")
 
 
 # ─── 3. Reward Shaping 비교 ───
@@ -217,7 +217,7 @@ def plot_reward_comparison(results_dir, output_dir, env_filter=None):
         path = os.path.join(output_dir, f"reward_{env}_{algo}.png")
         plt.savefig(path)
         plt.close()
-        print(f"  ✅ Reward Shaping: {path}")
+        print(f"Reward Shaping: {path}")
 
 
 # ─── 4. HP 튜닝 비교 ───
@@ -281,7 +281,7 @@ def plot_hp_comparison(results_dir, output_dir, env_filter=None):
         path = os.path.join(output_dir, f"hp_{env}_{algo}.png")
         plt.savefig(path, bbox_inches="tight")
         plt.close()
-        print(f"  ✅ HP 튜닝: {path}")
+        print(f"HP 튜닝: {path}")
 
 
 # ─── 5. Domain Randomization 비교 ───
@@ -326,14 +326,14 @@ def plot_dr_comparison(results_dir, output_dir, env_filter=None):
         path = os.path.join(output_dir, f"dr_{env}_{algo}_seed{seed}.png")
         plt.savefig(path)
         plt.close()
-        print(f"  ✅ Domain Rand.: {path}")
+        print(f"Domain Rand.: {path}")
 
 
 # ─── 메인 ───
 
 def main():
     parser = argparse.ArgumentParser(description="시각화 자동화")
-    parser.add_argument("--results-dir", default="results")
+    parser.add_argument("--results-dir", default="results/logs")
     parser.add_argument("--output-dir", default="results/plots")
     parser.add_argument("--type", default="all",
                         choices=["all", "curves", "bar", "reward", "hp", "dr"])
@@ -342,7 +342,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     print(f"\n{'='*60}")
-    print(f"  📈 시각화 자동화 | 타입: {args.type}")
+    print(f"  시각화 자동화 | 타입: {args.type}")
     print(f"{'='*60}\n")
 
     if args.type in ("all", "curves"):

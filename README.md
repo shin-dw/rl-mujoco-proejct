@@ -181,10 +181,10 @@ python -m src.train --algo ppo --env Humanoid-v5 --seed 42 \
 
 ```bash
 # 단일 실험
-tensorboard --logdir results/ppo_Humanoid-v5_seed42/logs/tensorboard
+tensorboard --logdir results/logs/ppo_Humanoid-v5_seed42/logs/tensorboard
 
 # 전체 실험 비교
-tensorboard --logdir results/
+tensorboard --logdir results/logs/
 # → 브라우저에서 http://localhost:6006 접속
 ```
 
@@ -193,12 +193,12 @@ tensorboard --logdir results/
 ```bash
 # 숫자 결과만 출력
 python -m src.evaluate \
-    --model results/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
     --algo ppo --env Humanoid-v5
 
 # 시뮬레이션 창에서 렌더링
 python -m src.evaluate \
-    --model results/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
     --algo ppo --env Humanoid-v5 --render --episodes 3
 ```
 
@@ -340,18 +340,6 @@ python scripts/record_videos.py --filter ppo
 - ✅ PPO / SAC / TD3 Baseline 학습
 - ✅ PPO run_forward Reward Shaping (+73.6% 성능 향상)
 - ✅ 알고리즘 간 Eval Return 비교 분석
-
----
-
-## 🐳 Docker 실행 (선택)
-
-```bash
-# Docker 이미지 빌드 및 실행
-docker-compose up --build
-
-# 특정 실험만 실행
-docker-compose run rl python -m src.train --algo ppo --env Humanoid-v5 --seed 42
-```
 
 ---
 
