@@ -70,11 +70,8 @@ rl-mujoco-proejct/
 │   │   └── summary.csv           # eval_all.py 일괄 평가 결과
 │   ├── plots/                    # 그래프 이미지
 │   └── videos/                   # 에피소드 녹화 영상
-├── report/
-│   └── RL 과제 보고서_실험결과.pptx
+├── RL 과제 보고서_제출용.pptx
 ├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
 └── README.md
 ```
 
