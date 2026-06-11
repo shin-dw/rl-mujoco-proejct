@@ -33,44 +33,60 @@ Reward Shaping 및 Hyperparameter 튜닝 실험을 통해 체계적으로 성능
 ```
 rl-mujoco-proejct/
 ├── configs/
-│   └──default.yaml              # 기본 하이퍼파라미터
+│   ├── default.yaml                         # 기본 하이퍼파라미터
+│   └── hp_tuning/                           # HP 튜닝용 yaml (12개)
+│       ├── ppo_clip01.yaml / ppo_clip03.yaml
+│       ├── ppo_lr1e-3.yaml / ppo_lr1e-4.yaml
+│       ├── sac_bs128.yaml  / sac_bs512.yaml
+│       ├── sac_lra1e-3.yaml/ sac_lra1e-4.yaml
+│       ├── td3_delay1.yaml / td3_delay4.yaml
+│       └── td3_noise005.yaml/ td3_noise02.yaml
 ├── src/
-│   ├── common/
-│   │   ├── networks.py           # MLP 기반 Actor / Critic 네트워크
-│   │   ├── buffer.py             # RolloutBuffer (PPO) / ReplayBuffer (SAC, TD3)
-│   │   ├── env_wrapper.py        # NormalizeObservation / ScaleReward / DR 래퍼
-│   │   ├── logger.py             # CSV + TensorBoard 로깅
-│   │   └── evaluator.py          # 학습 중 정책 평가
 │   ├── algorithms/
-│   │   ├── base.py               # BaseAlgorithm 추상 클래스
-│   │   ├── ppo.py                # PPO (Clipped Surrogate + GAE)
-│   │   ├── sac.py                # SAC (Max-Entropy + Twin-Q + Auto-α)
-│   │   └── td3.py                # TD3 (Delayed Update + Target Smoothing)
+│   │   ├── base.py                          # BaseAlgorithm 추상 클래스
+│   │   ├── ppo.py                           # PPO (Clipped Surrogate + GAE)
+│   │   ├── sac.py                           # SAC (Max-Entropy + Twin-Q + Auto-α)
+│   │   └── td3.py                           # TD3 (Delayed Update + Target Smoothing)
+│   ├── common/
+│   │   ├── buffer.py                        # RolloutBuffer (PPO) / ReplayBuffer (SAC, TD3)
+│   │   ├── env_wrapper.py                   # NormalizeObs / ScaleReward / DR 래퍼
+│   │   ├── evaluator.py                     # 학습 중 정책 평가
+│   │   ├── logger.py                        # CSV + TensorBoard 로깅
+│   │   └── networks.py                      # MLP 기반 Actor / Critic 네트워크
 │   ├── rewards/
-│   │   └── custom_rewards.py     # Humanoid-v5 전용 커스텀 리워드
-│   ├── train.py                  # 학습 진입점
-│   └── evaluate.py               # 단일 모델 평가 / 렌더링
+│   │   └── custom_rewards.py                # Humanoid-v5 전용 커스텀 리워드
+│   ├── train.py                             # 학습 진입점
+│   └── evaluate.py                          # 단일 모델 평가 / 렌더링
 ├── scripts/
-│   ├── run_experiments.py        # 전체 실험 자동화 (baseline → reward → hp → best)
-│   ├── eval_all.py               # 모든 실험 일괄 평가 → summary.csv
-│   ├── plot_comparison.py        # 4개 알고리즘 비교 그래프 (comparison_main.png)
-│   ├── plot_individual.py        # 실험별 개별 그래프 생성
-│   ├── plot_results.py           # 종합 결과 그래프
-│   ├── record_videos.py          # 에피소드 영상 녹화 (MP4)
-│   └── generate_report.py        # 실험 보고서 자동 생성 (.docx)
-├── results/                      # 실험 결과 (자동 생성, Git 제외)
-│   ├── {algo}_{env}_{tag}_seed{seed}/
-│   │   ├── logs/
-│   │   │   ├── progress.csv      # 학습 메트릭 (step, episode/return, eval/mean_return, ...)
-│   │   │   └── tensorboard/      # TensorBoard 이벤트
-│   │   └── models/
-│   │       ├── model_{step}.pt   # 체크포인트
-│   │       └── model_final.pt    # 최종 모델
+│   ├── run_experiments.py                   # 전체 실험 자동화 (baseline→reward→hp→best)
+│   ├── eval_all.py                          # 모든 모델 일괄 평가 → summary.csv
+│   ├── plot_comparison.py                   # 4개 알고리즘 비교 그래프
+│   ├── plot_individual.py                   # 실험별 개별 상세 그래프
+│   ├── plot_results.py                      # 종합 결과 그래프
+│   └── record_videos.py                     # 에피소드 MP4 녹화
+├── results/
 │   ├── eval/
-│   │   └── summary.csv           # eval_all.py 일괄 평가 결과
-│   ├── plots/                    # 그래프 이미지
-│   └── videos/                   # 에피소드 녹화 영상
+│   │   └── summary.csv                      # eval_all.py 일괄 평가 결과 (Git 포함)
+│   ├── logs/                                # 학습 로그 (Git 제외)
+│   │   └── {algo}_{env}_{tag}_seed{seed}/
+│   │       └── logs/
+│   │           ├── progress.csv             # 학습 메트릭 (step, return, loss, ...)
+│   │           └── tensorboard/             # TensorBoard 이벤트
+│   ├── models/                              # 학습된 모델 (Git 포함)
+│   │   └── {algo}_{env}_{tag}_seed{seed}/
+│   │       └── models/
+│   │           ├── model_final.pt           # 최종 모델 가중치
+│   │           └── model_final_obs_stats.npz# 관측값 정규화 통계
+│   ├── plots/                               # 그래프 이미지 (Git 제외)
+│   │   ├── comparison_main.png
+│   │   ├── comparison_bar.png
+│   │   ├── final_performance.png
+│   │   └── individual/{exp}.png
+│   └── videos/                              # 에피소드 녹화 영상 (Git 포함)
+│       └── {algo}_{env}_{tag}_seed{seed}/
+│           └── ep{N}.mp4
 ├── RL 과제 보고서_제출용.pptx
+├── RL_project_handout.pdf
 ├── requirements.txt
 └── README.md
 ```
