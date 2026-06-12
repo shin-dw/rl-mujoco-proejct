@@ -2,13 +2,13 @@
 
 서강대학교 강화학습 프로젝트 (인공지능)
 
-| 이름 | 학번 | 담당 |
-|---|---|---|
-| 박민설 | A74038 | SAC 구현, 전체 결과 분석, 최종 보고서 작성 |
+| 이름   | 학번   | 담당                                                  |
+| ------ | ------ | ----------------------------------------------------- |
+| 박민설 | A74038 | SAC 구현, 전체 결과 분석, 최종 보고서 작성            |
 | 신동우 | A74041 | MuJoCo 환경 세팅, 공통 학습 프레임워크, 시각화 자동화 |
-| 이희승 | A74048 | PPO·TD3 구현, Hyperparameter 실험, Reward Shaping |
+| 이희승 | A74048 | PPO·TD3 구현, Hyperparameter 실험, Reward Shaping     |
 
-- 보고서: [`RL 과제 보고서_제출용.pptx`](./RL%20과제%20보고서_제출용.pptx)
+- 보고서: [`RL 과제 보고서_제출용.pptx`](./RL%20과제%20보고서.pptx)
 - 학습된 최종 모델: [`final/model_final.pt`](./final/) (PPO + run_forward, 20M steps)
 
 ## 개요
@@ -23,12 +23,12 @@ MuJoCo **Humanoid-v5** (인간형 로봇 보행 제어) 환경에서 **PPO, SAC,
 
 Humanoid-v5, 20M steps, seed 42. Final Performance는 학습 후반 20% 구간(16M→20M)의 Eval Return 평균(에피소드 10개).
 
-| 알고리즘 | Mean Return | Peak | 후반 20% | 후반 10% | 비고 |
-|---|---:|---:|---:|---:|---|
-| **PPO + run_forward** | **7,251** | **9,378** | **6,777** | 6,218 | 가장 사람다운 달리기 동작 |
-| TD3 | 6,164 | 7,429 | 5,403 | 3,527 | 말기 성능 급락 (불안정) |
-| PPO Baseline | 4,176 | 5,507 | 4,966 | 4,994 | 안정적이나 생존 위주 보행 |
-| SAC | 2,415 | 4,998 | 3,044 | 3,026 | 고차원 행동 공간에서 학습 불안정 |
+| 알고리즘              | Mean Return |      Peak |  후반 20% | 후반 10% | 비고                             |
+| --------------------- | ----------: | --------: | --------: | -------: | -------------------------------- |
+| **PPO + run_forward** |   **7,251** | **9,378** | **6,777** |    6,218 | 가장 사람다운 달리기 동작        |
+| TD3                   |       6,164 |     7,429 |     5,403 |    3,527 | 말기 성능 급락 (불안정)          |
+| PPO Baseline          |       4,176 |     5,507 |     4,966 |    4,994 | 안정적이나 생존 위주 보행        |
+| SAC                   |       2,415 |     4,998 |     3,044 |    3,026 | 고차원 행동 공간에서 학습 불안정 |
 
 - **Reward Shaping 효과**: PPO Baseline 대비 Mean +73%, Peak +70%. 알고리즘 교체보다 리워드 설계가 더 큰 성능 향상을 가져왔다.
 - **On-policy vs Off-policy**: 이 환경에서는 PPO(on-policy)가 롤아웃 기반의 안정적 수렴을 보인 반면, TD3(off-policy)는 초반 학습은 빠르나 말기 붕괴 위험이 있었다.
@@ -94,16 +94,16 @@ python -m src.train --algo td3 --env Humanoid-v5 --seed 42
 python -m src.train --algo ppo --env Humanoid-v5 --seed 42 --tensorboard
 ```
 
-| 옵션 | 설명 |
-|---|---|
-| `--algo` | `ppo` / `sac` / `td3` (필수) |
-| `--env` | MuJoCo 환경 ID (기본 실험: `Humanoid-v5`) |
-| `--seed` | 랜덤 시드 |
-| `--total-steps` | 총 학습 스텝 (생략 시 config의 환경별 값 사용) |
+| 옵션            | 설명                                                          |
+| --------------- | ------------------------------------------------------------- |
+| `--algo`        | `ppo` / `sac` / `td3` (필수)                                  |
+| `--env`         | MuJoCo 환경 ID (기본 실험: `Humanoid-v5`)                     |
+| `--seed`        | 랜덤 시드                                                     |
+| `--total-steps` | 총 학습 스텝 (생략 시 config의 환경별 값 사용)                |
 | `--reward-type` | 커스텀 리워드 (`run_forward`, `balanced_walk`, `stable_gait`) |
-| `--config` | 설정 파일 경로 (기본 `configs/default.yaml`) |
-| `--device` | `auto` / `cpu` / `cuda` |
-| `--domain-rand` | 물리 파라미터 무작위화 (마찰·질량·감쇠) |
+| `--config`      | 설정 파일 경로 (기본 `configs/default.yaml`)                  |
+| `--device`      | `auto` / `cpu` / `cuda`                                       |
+| `--domain-rand` | 물리 파라미터 무작위화 (마찰·질량·감쇠)                       |
 
 결과는 `results/<algo>_<env>[_reward]_seed<seed>/` 아래에 모델(`models/`)과 로그(`logs/progress.csv`)로 저장된다.
 
@@ -149,26 +149,26 @@ docker compose up tensorboard
 
 MuJoCo 기본 리워드(생존 + 전진 - 제어비용 - 접촉비용)만으로는 "넘어지지 않고 전진"하는 비효율적 보행에 머물러, 달리기 특성을 반영한 항목을 추가했다 (`src/rewards/custom_rewards.py`).
 
-| 항목 | 목적 |
-|---|---|
-| Velocity Bonus (3.0 × x속도) | 빠른 전진 유도 |
-| Posture Penalty | 후방 기울임 강한 페널티, 과도한 전방 숙임 방지 |
-| Hip Alternation | 좌우 다리 교차 보행 보상, 양발 동시 점프(캥거루) 강한 페널티 |
-| Knee Usage Bonus | 적극적인 무릎 활용 |
-| Arm Swing Bonus | 다리와 반대 방향 팔 스윙 유도 |
-| Y-axis Penalty | 직진 보행 유도 |
-| Shuffle Penalty | 제자리걸음(x속도 < 0.5) 방지 |
+| 항목                         | 목적                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| Velocity Bonus (3.0 × x속도) | 빠른 전진 유도                                               |
+| Posture Penalty              | 후방 기울임 강한 페널티, 과도한 전방 숙임 방지               |
+| Hip Alternation              | 좌우 다리 교차 보행 보상, 양발 동시 점프(캥거루) 강한 페널티 |
+| Knee Usage Bonus             | 적극적인 무릎 활용                                           |
+| Arm Swing Bonus              | 다리와 반대 방향 팔 스윙 유도                                |
+| Y-axis Penalty               | 직진 보행 유도                                               |
+| Shuffle Penalty              | 제자리걸음(x속도 < 0.5) 방지                                 |
 
 ### 알고리즘 및 하이퍼파라미터
 
 세 알고리즘 모두 동일한 MLP backbone(Linear 256 → ReLU → Linear 256 → ReLU)을 사용한다. 전체 값은 `configs/default.yaml` 참고.
 
-| | PPO | SAC | TD3 |
-|---|---|---|---|
-| LR (actor / critic) | 3e-4 / 3e-4 | 3e-4 / 1e-4 (α: 3e-4) | 3e-4 / 1e-4 |
-| Batch Size | 512 (rollout 2048) | 256 | 1024 |
-| 핵심 설정 | clip 0.1, GAE λ 0.95, epochs 10, entropy 0.001, LR annealing | buffer 1M, auto entropy (target -8.5), τ 0.005 | buffer 1M, policy delay 2, target noise 0.2, gradient steps 8 |
-| Reward Scale | 1.0 | 10.0 | 10.0 |
+|                     | PPO                                                          | SAC                                            | TD3                                                           |
+| ------------------- | ------------------------------------------------------------ | ---------------------------------------------- | ------------------------------------------------------------- |
+| LR (actor / critic) | 3e-4 / 3e-4                                                  | 3e-4 / 1e-4 (α: 3e-4)                          | 3e-4 / 1e-4                                                   |
+| Batch Size          | 512 (rollout 2048)                                           | 256                                            | 1024                                                          |
+| 핵심 설정           | clip 0.1, GAE λ 0.95, epochs 10, entropy 0.001, LR annealing | buffer 1M, auto entropy (target -8.5), τ 0.005 | buffer 1M, policy delay 2, target noise 0.2, gradient steps 8 |
+| Reward Scale        | 1.0                                                          | 10.0                                           | 10.0                                                          |
 
 SAC/TD3는 running reward normalization이 replay buffer와 비호환이라 고정 스케일링(÷10)을 적용했고, SAC의 target entropy는 기본값(-17)이 정책 표준편차 붕괴를 유발해 Humanoid-v5 전용으로 -8.5를 사용했다.
 

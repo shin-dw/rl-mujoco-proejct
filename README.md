@@ -13,14 +13,12 @@ Reward Shaping 및 Hyperparameter 튜닝 실험을 통해 체계적으로 성능
 
 ### 알고리즘별 Eval Return (10 에피소드 평균)
 
-
-| 알고리즘                  | Mean      | Std   | Peak      | 후반 20% 평균 | 비고                |
-| --------------------- | --------- | ----- | --------- | --------- | ----------------- |
-| **PPO + run_forward** | **7,251** | 2,076 | **9,378** | **6,777** | 최고 성능             |
-| TD3 Baseline          | 6,164     | 1,917 | 7,429     | 5,403     | 학습 후반 불안정         |
-| PPO Baseline          | 4,176     | 1,259 | 5,507     | 4,966     | 가장 안정적            |
-| SAC Baseline          | 2,415     | 1,577 | 4,998     | 3,044     | reward scaling 이슈 |
-
+| 알고리즘              | Mean      | Std   | Peak      | 후반 20% 평균 | 비고                |
+| --------------------- | --------- | ----- | --------- | ------------- | ------------------- |
+| **PPO + run_forward** | **7,251** | 2,076 | **9,378** | **6,777**     | 최고 성능           |
+| TD3 Baseline          | 6,164     | 1,917 | 7,429     | 5,403         | 학습 후반 불안정    |
+| PPO Baseline          | 4,176     | 1,259 | 5,507     | 4,966         | 가장 안정적         |
+| SAC Baseline          | 2,415     | 1,577 | 4,998     | 3,044         | reward scaling 이슈 |
 
 ### 핵심 발견
 
@@ -87,7 +85,7 @@ rl-mujoco-proejct/
 │   └── videos/                              # 에피소드 녹화 영상 (Git 포함)
 │       └── {algo}_{env}_{tag}_seed{seed}/
 │           └── ep{N}.mp4
-├── RL 과제 보고서_제출용.pptx
+├── RL 과제 보고서.pptx
 ├── RL_project_handout.pdf
 ├── requirements.txt
 └── README.md
@@ -95,19 +93,21 @@ rl-mujoco-proejct/
 
 ---
 
+## 보고서 경로
+
+- 보고서: [`RL 과제 보고서_제출용.pptx`](./RL%20과제%20보고서.pptx)
+
 ## 사전 학습된 모델
 
 > 학습된 모델은 리포지토리 `results/models/` 폴더에 포함되어 있습니다.  
 > `git clone` 후 별도 설치 없이 바로 평가·렌더링이 가능합니다.
 
-
-| 경로                                                                                                                                                 | 알고리즘              | Mean  | Peak  | 크기     |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ----- | ------ |
-| [results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt) | PPO + run_forward | 7,251 | 9,378 | 3.6 MB |
-| [results/models/ppo_Humanoid-v5_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_seed42/models/model_final.pt)                         | PPO Baseline      | 4,176 | 5,507 | 3.6 MB |
-| [results/models/sac_Humanoid-v5_seed42/models/model_final.pt](results/models/sac_Humanoid-v5_seed42/models/model_final.pt)                         | SAC Baseline      | 2,415 | 4,998 | 6.8 MB |
-| [results/models/td3_Humanoid-v5_seed42/models/model_final.pt](results/models/td3_Humanoid-v5_seed42/models/model_final.pt)                         | TD3 Baseline      | 6,164 | 7,429 | 7.3 MB |
-
+| 경로                                                                                                                                | 알고리즘          | Mean  | Peak  | 크기   |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ----- | ------ |
+| [results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_run_forward_seed42/models) | PPO + run_forward | 7,251 | 9,378 | 3.6 MB |
+| [results/models/ppo_Humanoid-v5_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_seed42/models/model_final.pt)          | PPO Baseline      | 4,176 | 5,507 | 3.6 MB |
+| [results/models/sac_Humanoid-v5_seed42/models/model_final.pt](results/models/sac_Humanoid-v5_seed42/models/model_final.pt)          | SAC Baseline      | 2,415 | 4,998 | 6.8 MB |
+| [results/models/td3_Humanoid-v5_seed42/models/model_final.pt](results/models/td3_Humanoid-v5_seed42/models/model_final.pt)          | TD3 Baseline      | 6,164 | 7,429 | 7.3 MB |
 
 ### 클론 후 즉시 평가
 
@@ -171,17 +171,15 @@ python -m src.train --algo ppo --env Humanoid-v5 --seed 42 \
 
 #### 주요 옵션
 
-
-| 옵션              | 설명                 | 예시                                            |
-| --------------- | ------------------ | --------------------------------------------- |
-| `--algo`        | 알고리즘 선택 (필수)       | `ppo`, `sac`, `td3`                           |
-| `--env`         | MuJoCo 환경          | `Humanoid-v5`                                 |
-| `--seed`        | 랜덤 시드              | `42`                                          |
+| 옵션            | 설명                    | 예시                                          |
+| --------------- | ----------------------- | --------------------------------------------- |
+| `--algo`        | 알고리즘 선택 (필수)    | `ppo`, `sac`, `td3`                           |
+| `--env`         | MuJoCo 환경             | `Humanoid-v5`                                 |
+| `--seed`        | 랜덤 시드               | `42`                                          |
 | `--total-steps` | 총 학습 스텝            | `20000000`                                    |
-| `--reward-type` | 커스텀 리워드 함수         | `run_forward`, `balanced_walk`, `stable_gait` |
-| `--config`      | 설정 파일 경로           | `configs/hp_tuning/ppo_clip01.yaml`           |
-| `--tensorboard` | TensorBoard 로깅 활성화 | (플래그)                                         |
-
+| `--reward-type` | 커스텀 리워드 함수      | `run_forward`, `balanced_walk`, `stable_gait` |
+| `--config`      | 설정 파일 경로          | `configs/hp_tuning/ppo_clip01.yaml`           |
+| `--tensorboard` | TensorBoard 로깅 활성화 | (플래그)                                      |
 
 ### 3. TensorBoard로 학습 모니터링
 
@@ -229,33 +227,27 @@ python scripts/run_experiments.py --phase best
 
 ### 대상 환경
 
-
-| 환경              | State 차원 | Action 차원 | Action 범위 | 학습 스텝      |
-| --------------- | -------- | --------- | --------- | ---------- |
-| **Humanoid-v5** | 376      | 17        | ±0.4      | 20,000,000 |
-
+| 환경            | State 차원 | Action 차원 | Action 범위 | 학습 스텝  |
+| --------------- | ---------- | ----------- | ----------- | ---------- |
+| **Humanoid-v5** | 376        | 17          | ±0.4        | 20,000,000 |
 
 > MuJoCo 인간형 로봇의 직립 보행 학습. 가장 고차원 연속 제어 환경.
 
 ### 구현된 알고리즘
 
-
-| 알고리즘    | 방식         | 버퍼                  | 특징                                                           |
-| ------- | ---------- | ------------------- | ------------------------------------------------------------ |
-| **PPO** | On-policy  | RolloutBuffer (GAE) | clip_ratio=0.1, lr annealing, state-independent std          |
-| **SAC** | Off-policy | ReplayBuffer        | Twin-Q, Auto-α, target_entropy=-8.5                          |
-| **TD3** | Off-policy | ReplayBuffer        | Delayed update (×2), target smoothing, exploration noise=0.1 |
-
+| 알고리즘 | 방식       | 버퍼                | 특징                                                         |
+| -------- | ---------- | ------------------- | ------------------------------------------------------------ |
+| **PPO**  | On-policy  | RolloutBuffer (GAE) | clip_ratio=0.1, lr annealing, state-independent std          |
+| **SAC**  | Off-policy | ReplayBuffer        | Twin-Q, Auto-α, target_entropy=-8.5                          |
+| **TD3**  | Off-policy | ReplayBuffer        | Delayed update (×2), target smoothing, exploration noise=0.1 |
 
 ### 커스텀 리워드 (Humanoid-v5 전용)
 
-
-| 리워드 타입          | 설명                                                                        |
-| --------------- | ------------------------------------------------------------------------- |
+| 리워드 타입     | 설명                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
 | `run_forward`   | velocity_bonus(×3.0) + 자세 페널티 + 엉덩이 교번 보너스 + 무릎/팔 스윙 + y축 직진 + 제자리 걸음 페널티 |
-| `balanced_walk` | 기본 reward + 높이 유지 + 에너지 절약 + y축 직진 + 좌우 고관절 대칭성                           |
-| `stable_gait`   | 연속 행동 변화량 페널티 (부드러운 걸음걸이)                                                 |
-
+| `balanced_walk` | 기본 reward + 높이 유지 + 에너지 절약 + y축 직진 + 좌우 고관절 대칭성                                  |
+| `stable_gait`   | 연속 행동 변화량 페널티 (부드러운 걸음걸이)                                                            |
 
 ---
 
@@ -310,43 +302,37 @@ python scripts/record_videos.py --filter ppo
 
 ### PPO
 
-
-| 파라미터                 | 값    | 설명         |
-| -------------------- | ---- | ---------- |
-| lr_actor / lr_critic | 3e-4 | 학습률        |
-| n_steps              | 2048 | 롤아웃 스텝 수   |
-| batch_size           | 512  | 미니배치 크기    |
+| 파라미터             | 값   | 설명               |
+| -------------------- | ---- | ------------------ |
+| lr_actor / lr_critic | 3e-4 | 학습률             |
+| n_steps              | 2048 | 롤아웃 스텝 수     |
+| batch_size           | 512  | 미니배치 크기      |
 | n_epochs             | 10   | 업데이트 반복 횟수 |
-| clip_ratio           | 0.1  | PPO 클리핑 범위 |
-| gae_lambda           | 0.95 | GAE λ      |
-| lr_annealing         | true | 학습률 선형 감소  |
-
+| clip_ratio           | 0.1  | PPO 클리핑 범위    |
+| gae_lambda           | 0.95 | GAE λ              |
+| lr_annealing         | true | 학습률 선형 감소   |
 
 ### SAC
 
-
-| 파라미터           | 값    | 설명                               |
-| -------------- | ---- | -------------------------------- |
-| lr_actor       | 3e-4 | Actor 학습률                        |
-| lr_critic      | 1e-4 | Critic 학습률                       |
-| batch_size     | 256  | 배치 크기                            |
+| 파라미터       | 값   | 설명                                     |
+| -------------- | ---- | ---------------------------------------- |
+| lr_actor       | 3e-4 | Actor 학습률                             |
+| lr_critic      | 1e-4 | Critic 학습률                            |
+| batch_size     | 256  | 배치 크기                                |
 | target_entropy | -8.5 | Humanoid-v5 최적값 (-17은 std 붕괴 유발) |
-| reward_scale   | 10.0 | 리워드 스케일링                         |
-| auto_entropy   | true | α 자동 조절                          |
-
+| reward_scale   | 10.0 | 리워드 스케일링                          |
+| auto_entropy   | true | α 자동 조절                              |
 
 ### TD3
 
-
-| 파라미터              | 값    | 설명              |
-| ----------------- | ---- | --------------- |
-| lr_actor          | 3e-4 | Actor 학습률       |
-| lr_critic         | 1e-4 | Critic 학습률      |
-| batch_size        | 1024 | 배치 크기           |
-| policy_delay      | 2    | 정책 업데이트 지연 주기   |
+| 파라미터          | 값   | 설명                     |
+| ----------------- | ---- | ------------------------ |
+| lr_actor          | 3e-4 | Actor 학습률             |
+| lr_critic         | 1e-4 | Critic 학습률            |
+| batch_size        | 1024 | 배치 크기                |
+| policy_delay      | 2    | 정책 업데이트 지연 주기  |
 | exploration_noise | 0.1  | 탐색 노이즈 (가우시안 σ) |
-| reward_scale      | 10.0 | 리워드 스케일링        |
-
+| reward_scale      | 10.0 | 리워드 스케일링          |
 
 ---
 
@@ -363,13 +349,11 @@ python scripts/record_videos.py --filter ppo
 
 ## 팀원
 
-
-| 이름          | 담당                                         |
-| ----------- | ------------------------------------------ |
-| 신동우(A74041) | 환경/실험 인프라, 시각화 자동화                         |
+| 이름           | 담당                                                  |
+| -------------- | ----------------------------------------------------- |
+| 신동우(A74041) | 환경/실험 인프라, 시각화 자동화                       |
 | 이희승(A74048) | PPO + TD3 구현, Reward Shaping 실험, 전체 실험 진행행 |
-| 박민설(A74038) | SAC 구현, 분석/보고서                             |
-
+| 박민설(A74038) | SAC 구현, 분석/보고서                                 |
 
 ---
 
