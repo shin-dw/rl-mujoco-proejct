@@ -1,3 +1,6 @@
+.gitignore
+.gitattributes
+
 # Python
 __pycache__/
 *.py[cod]
@@ -21,7 +24,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
-*.png
 
 # md
 shin.md
