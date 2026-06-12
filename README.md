@@ -7,6 +7,16 @@ Reward Shaping 및 Hyperparameter 튜닝 실험을 통해 체계적으로 성능
 
 ---
 
+## 팀원
+
+| 이름           | 담당                                                |
+| -------------- | --------------------------------------------------- |
+| 신동우(A74041) | 환경/실험 인프라, 시각화 자동화                     |
+| 이희승(A74048) | PPO + TD3 구현, Reward Shaping 실험, 전체 실험 진행 |
+| 박민설(A74038) | SAC 구현, 분석/보고서                               |
+
+---
+
 ## 최종 실험 결과 요약
 
 > 모든 실험은 **Humanoid-v5** 환경, **seed 42**, **20M 학습 스텝** 기준으로 수행되었습니다.
@@ -70,8 +80,7 @@ rl-mujoco-proejct/
 │   ├── logs/                                # 학습 로그 (Git 제외)
 │   │   └── {algo}_{env}_{tag}_seed{seed}/
 │   │       └── logs/
-│   │           ├── progress.csv             # 학습 메트릭 (step, return, loss, ...)
-│   │           └── tensorboard/             # TensorBoard 이벤트
+│   │           └──  progress.csv            # 학습 메트릭 (step, return, loss, ...)
 │   ├── models/                              # 학습된 모델 (Git 포함)
 │   │   └── {algo}_{env}_{tag}_seed{seed}/
 │   │       └── models/
@@ -346,15 +355,5 @@ python scripts/record_videos.py --filter ppo
 - PPO / SAC / TD3 Baseline 학습
 - PPO run_forward Reward Shaping (+73.6% 성능 향상)
 - 알고리즘 간 Eval Return 비교 분석
-
----
-
-## 팀원
-
-| 이름           | 담당                                                |
-| -------------- | --------------------------------------------------- |
-| 신동우(A74041) | 환경/실험 인프라, 시각화 자동화                     |
-| 이희승(A74048) | PPO + TD3 구현, Reward Shaping 실험, 전체 실험 진행 |
-| 박민설(A74038) | SAC 구현, 분석/보고서                               |
 
 ---
