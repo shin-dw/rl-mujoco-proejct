@@ -102,12 +102,12 @@ rl-mujoco-proejct/
 > 학습된 모델은 리포지토리 `results/models/` 폴더에 포함되어 있습니다.  
 > `git clone` 후 별도 설치 없이 바로 평가·렌더링이 가능합니다.
 
-| 경로                                                                                                                                | 알고리즘          | Mean  | Peak  | 크기   |
-| ----------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ----- | ------ |
-| [results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_run_forward_seed42/models) | PPO + run_forward | 7,251 | 9,378 | 3.6 MB |
-| [results/models/ppo_Humanoid-v5_seed42/models/model_final.pt](results/models/ppo_Humanoid-v5_seed42/models/model_final.pt)          | PPO Baseline      | 4,176 | 5,507 | 3.6 MB |
-| [results/models/sac_Humanoid-v5_seed42/models/model_final.pt](results/models/sac_Humanoid-v5_seed42/models/model_final.pt)          | SAC Baseline      | 2,415 | 4,998 | 6.8 MB |
-| [results/models/td3_Humanoid-v5_seed42/models/model_final.pt](results/models/td3_Humanoid-v5_seed42/models/model_final.pt)          | TD3 Baseline      | 6,164 | 7,429 | 7.3 MB |
+| 경로                                                                                                                 | 알고리즘          | Mean  | Peak  | 크기   |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- | ----- | ------ |
+| [results/models/ppo_Humanoid-v5_run_forward_seed42/models](results/models/ppo_Humanoid-v5_run_forward_seed42/models) | PPO + run_forward | 7,251 | 9,378 | 3.6 MB |
+| [results/models/ppo_Humanoid-v5_seed42/models](results/models/ppo_Humanoid-v5_seed42/models)                         | PPO Baseline      | 4,176 | 5,507 | 3.6 MB |
+| [results/models/sac_Humanoid-v5_seed42/models](results/models/sac_Humanoid-v5_seed42/models)                         | SAC Baseline      | 2,415 | 4,998 | 6.8 MB |
+| [results/models/td3_Humanoid-v5_seed42/models](results/models/td3_Humanoid-v5_seed42/models)                         | TD3 Baseline      | 6,164 | 7,429 | 7.3 MB |
 
 ### 클론 후 즉시 평가
 
@@ -118,13 +118,13 @@ pip install -r requirements.txt
 
 # 최고 성능 모델 (PPO + run_forward) 렌더링
 python -m src.evaluate \
-    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models \
     --algo ppo --env Humanoid-v5 --render --episodes 3
 
 # 알고리즘 비교 평가 (수치 출력)
-python -m src.evaluate --model results/models/ppo_Humanoid-v5_seed42/models/model_final.pt   --algo ppo --env Humanoid-v5
-python -m src.evaluate --model results/models/sac_Humanoid-v5_seed42/models/model_final.pt   --algo sac --env Humanoid-v5
-python -m src.evaluate --model results/models/td3_Humanoid-v5_seed42/models/model_final.pt   --algo td3 --env Humanoid-v5
+python -m src.evaluate --model results/models/ppo_Humanoid-v5_seed42/models   --algo ppo --env Humanoid-v5
+python -m src.evaluate --model results/models/sac_Humanoid-v5_seed42/models   --algo sac --env Humanoid-v5
+python -m src.evaluate --model results/models/td3_Humanoid-v5_seed42/models   --algo td3 --env Humanoid-v5
 ```
 
 ---
@@ -197,12 +197,12 @@ tensorboard --logdir results/logs/
 ```bash
 # 숫자 결과만 출력
 python -m src.evaluate \
-    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models \
     --algo ppo --env Humanoid-v5
 
 # 시뮬레이션 창에서 렌더링
 python -m src.evaluate \
-    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models/model_final.pt \
+    --model results/models/ppo_Humanoid-v5_run_forward_seed42/models \
     --algo ppo --env Humanoid-v5 --render --episodes 3
 ```
 
