@@ -354,10 +354,10 @@ python scripts/record_videos.py --filter ppo
 
 ### 실제 수행된 실험
 
-- ✅ Humanoid-v5 환경, seed 42, 20M 스텝
-- ✅ PPO / SAC / TD3 Baseline 학습
-- ✅ PPO run_forward Reward Shaping (+73.6% 성능 향상)
-- ✅ 알고리즘 간 Eval Return 비교 분석
+- Humanoid-v5 환경, seed 42, 20M 스텝
+- PPO / SAC / TD3 Baseline 학습
+- PPO run_forward Reward Shaping (+73.6% 성능 향상)
+- 알고리즘 간 Eval Return 비교 분석
 
 ---
 
