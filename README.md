@@ -97,6 +97,8 @@ rl-mujoco-proejct/
 
 - 보고서: [`RL_과제_보고서.pptx`](./RL_과제_보고서.pptx)
 
+---
+
 ## 사전 학습된 모델
 
 > 학습된 모델은 리포지토리 `results/models/` 폴더에 포함되어 있습니다.  
