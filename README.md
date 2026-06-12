@@ -302,7 +302,7 @@ python scripts/record_videos.py --episodes 3
 # 특정 알고리즘만
 python scripts/record_videos.py --filter ppo
 
-# 저장 위치: results/videos/{실험명}/ep01.mp4, ep02.mp4, ...
+# 저장 위치: results/videos/{실험명}/ep01.mp4, ep02.mp4, ..
 ```
 
 > **사전 설치 필요**: `pip install imageio imageio-ffmpeg`
