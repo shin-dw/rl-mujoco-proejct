@@ -358,7 +358,3 @@ python scripts/record_videos.py --filter ppo
 | 박민설(A74038) | SAC 구현, 분석/보고서                               |
 
 ---
-
-## 라이선스
-
-본 프로젝트는 서강대학교 강화학습 수업 과제로 제작되었습니다.
